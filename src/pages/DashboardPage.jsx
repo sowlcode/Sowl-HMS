@@ -1,33 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
-import { useNavigate } from "react-router-dom";
-
-function DashboardPage({ session, setSession }) {
-    const navigate = useNavigate();
-
-    async function handleLogout() {
-        try {
-            await invoke("logout");
-
-            // Clear frontend session
-            setSession(null);
-
-
-        } catch (error) {
-            console.error("Logout failed:", error);
-        }
-    }
-
+function DashboardPage({ session }) {
     return (
-        <div>
-            <h1>Dashboard</h1>
-
-            <p>Welcome, {session?.username}!</p>
-
-            <button onClick={handleLogout}>
-                Logout
-            </button>
+        <div className="p-6">
+            <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+            <p className="mt-2 text-gray-600">Welcome to the hotel management system dashboard.</p>
         </div>
     );
 }
-
 export default DashboardPage;
