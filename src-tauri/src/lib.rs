@@ -1,18 +1,19 @@
 mod commands;
 mod database;
+mod session;
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(session::SessionState::new())
         .setup(|app| {
-            database::initialize_database(&app.handle())
-                .expect("Failed to initialize database");
-
+            database::initialize_database(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::auth::login
+            commands::auth::login,
+            commands::auth::get_session,
+            commands::auth::logout
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Sowl HMS");
+        .expect("error while running tauri application");
 }

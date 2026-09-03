@@ -1,43 +1,40 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 
-function LoginPage() {
+function LoginPage({ setSession }) {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const navigate = useNavigate();
 
-    async function handleLogin(event) {
-        event.preventDefault();
+    async function handleLogin(e) {
+        e.preventDefault();
+
         setError("");
 
-        if (!username.trim()) {
-            setError("Please enter your username.");
-            return;
-        }
-
-        if (!password) {
-            setError("Please enter your password.");
-            return;
-        }
-
-        setLoading(true);
-
         try {
-            const role = await invoke("login", {
-                username: username.trim(),
+            console.log("Attempting login...");
+
+            const session = await invoke("login", {
+                username,
                 password,
             });
 
-            alert(`Login successful. Role: ${role}`);
+            console.log("Login successful:", session);
+
+            setSession(session);
+
+            console.log("Navigating to dashboard...");
+
+            navigate("/dashboard");
+
         } catch (error) {
-            console.error(error);
+            console.error("Login failed:", error);
             setError(String(error));
-        } finally {
-            setLoading(false);
         }
     }
-
     return (
         <div className="min-h-screen bg-white text-black flex items-center justify-center p-6">
 
