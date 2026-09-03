@@ -25,4 +25,5 @@ serde_json = "1"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 argon2 = { version = "0.6", features = ["rand_core"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+rand = "0.10.2"
 
