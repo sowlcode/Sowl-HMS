@@ -1,10 +1,10 @@
-use argon2::Argon2;
 use argon2::password_hash::PasswordHasher;
+use argon2::Argon2;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-fn database_path(app: &AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub fn database_path(app: &AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let app_data_dir = app.path().app_data_dir()?;
 
     std::fs::create_dir_all(&app_data_dir)?;
@@ -12,9 +12,7 @@ fn database_path(app: &AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>>
     Ok(app_data_dir.join("sowl_hms.db"))
 }
 
-pub fn initialize_database(
-    app: &AppHandle,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let db_path = database_path(app)?;
 
     println!("Database path: {:?}", db_path);
@@ -33,15 +31,29 @@ pub fn initialize_database(
         );
         ",
     )?;
+    conn.execute(
+        r#"
+    CREATE TABLE IF NOT EXISTS customers (
+    customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    address TEXT,
+    phone_number TEXT NOT NULL UNIQUE,
+    document_type TEXT,
+    document_number TEXT,
+    document_pic TEXT,
+    nationality TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+    "#,
+        [],
+    )?;
 
     seed_admin(&conn)?;
 
     Ok(())
 }
 
-fn seed_admin(
-    conn: &Connection,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn seed_admin(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
     let username = "sowladmin";
     let password = "Rr@ik012";
 

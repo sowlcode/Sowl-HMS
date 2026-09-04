@@ -12,9 +12,16 @@
   "app": {
     "windows": [
       {
-        "title": "sowl_hms",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "SOWL HMS",
+        "width": 1200,
+        "height": 800,
+        "transparent": false,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false,
+        "shadow": true,
+        "theme": "Dark"
       }
     ],
     "security": {
