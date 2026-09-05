@@ -43,7 +43,7 @@ function Sidebar({
 
     const menuItems = [
         { id: "dashboard", label: "Dashboard", icon: HomeIcon, adminOnly: false },
-        { id: "rooms", label: "Rooms", icon: BuildingOfficeIcon, adminOnly: false },
+        { id: "rooms", label: "Rooms", icon: BuildingOfficeIcon, adminOnly: true },
         { id: "food-services", label: "Food & Services", icon: SparklesIcon, adminOnly: false },
         { id: "customers", label: "Customers", icon: UserGroupIcon, adminOnly: false },
         { id: "room-registration", label: "Room Registration", icon: ClipboardDocumentListIcon, adminOnly: false },
@@ -75,7 +75,6 @@ function Sidebar({
     const getDisplayRole = (roleValue) => {
         if (!roleValue) return 'Loading...';
         if (roleValue === 'admin') return 'Administrator';
-        if (roleValue === 'staff') return 'Staff Member';
         if (roleValue === 'manager') return 'Manager';
         return roleValue.charAt(0).toUpperCase() + roleValue.slice(1);
     };

@@ -2,6 +2,8 @@ mod commands;
 mod database;
 mod session;
 mod customer;
+mod room_management;
+mod booking;
 
 pub fn run() {
     tauri::Builder::default()
@@ -26,6 +28,28 @@ pub fn run() {
             customer::get_customer,
             customer::list_customers,
             customer::search_customers,
+
+            room_management::add_room,
+            room_management::delete_room,
+            room_management::update_room,
+            room_management::get_rooms,
+            room_management::get_available_rooms,
+            room_management::set_room_maintenance,
+            room_management::remove_room_maintenance,
+
+            booking::create_booking,
+            booking::add_room_to_registration,
+            booking::change_registration_room,
+
+            booking::get_booking,
+            booking::get_active_bookings,
+            booking::get_registration_rooms,
+            booking::get_registration_history,
+            booking::checkout_room,
+
+            booking::checkout_registration,
+
+            
 
             
         ])

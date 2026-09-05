@@ -21,32 +21,147 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
 
     println!("Database opened successfully.");
 
+    // Enable foreign keys
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+
+    // ============================================================
+    // USERS
+    // ============================================================
+
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
-            role TEXT NOT NULL CHECK (role IN ('admin', 'staff'))
+            role TEXT NOT NULL CHECK (role IN ('admin', 'manager'))
         );
         ",
     )?;
+
+    // ============================================================
+    // CUSTOMERS
+    // ============================================================
+
     conn.execute(
         r#"
-    CREATE TABLE IF NOT EXISTS customers (
-    customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    address TEXT,
-    phone_number TEXT NOT NULL UNIQUE,
-    document_type TEXT,
-    document_number TEXT,
-    document_pic TEXT,
-    nationality TEXT,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+        CREATE TABLE IF NOT EXISTS customers (
+            customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            address TEXT,
+            phone_number TEXT NOT NULL UNIQUE,
+            document_type TEXT,
+            document_number TEXT,
+            document_pic TEXT,
+            nationality TEXT,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        "#,
+        [],
+    )?;
+
+    // ============================================================
+    // ROOMS
+    // ============================================================
+
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS rooms (
+            room_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_number TEXT NOT NULL UNIQUE,
+            room_rate DECIMAL(10,2) NOT NULL,
+            no_of_beds INTEGER NOT NULL,
+            features TEXT,
+            status TEXT NOT NULL DEFAULT 'available'
+                CHECK (status IN (
+                    'available',
+                    'reserved',
+                    'booked',
+                    'maintenance'
+                ))
+        );
+        "#,
+        [],
+    )?;
+
+    // ============================================================
+    // Registrations table to store customer registrations
+    // ============================================================
+
+    conn.execute(
+        r#"
+    CREATE TABLE IF NOT EXISTS registrations (
+        registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        customer_id INTEGER NOT NULL,
+
+        check_in DATETIME NOT NULL,
+        check_out DATETIME,
+
+        booking_datetime DATETIME NOT NULL
+            DEFAULT CURRENT_TIMESTAMP,
+
+        male_count INTEGER NOT NULL DEFAULT 0,
+        female_count INTEGER NOT NULL DEFAULT 0,
+
+        relation TEXT NOT NULL,
+
+        status TEXT NOT NULL DEFAULT 'active'
+            CHECK (status IN (
+                'active',
+                'completed',
+                'cancelled'
+            )),
+
+        FOREIGN KEY (customer_id)
+            REFERENCES customers(customer_id)
+            ON DELETE RESTRICT
+            ON UPDATE CASCADE
+    );
     "#,
         [],
     )?;
+
+    // ============================================================
+    // REGISTRATION ROOMS
+    // ============================================================
+
+    conn.execute(
+        r#"
+    CREATE TABLE IF NOT EXISTS registration_rooms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    registration_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
+
+    check_in DATETIME NOT NULL,
+    check_out DATETIME,
+
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN (
+            'active',
+            'completed',
+            'cancelled'
+        )),
+
+    FOREIGN KEY (registration_id)
+        REFERENCES registrations(registration_id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    FOREIGN KEY (room_id)
+        REFERENCES rooms(room_id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
+);
+    );
+    "#,
+        [],
+    )?;
+
+    // ============================================================
+    // SEED ADMIN
+    // ============================================================
 
     seed_admin(&conn)?;
 

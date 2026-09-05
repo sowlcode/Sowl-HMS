@@ -87,7 +87,7 @@ pub fn create_user(
         INSERT INTO users
             (username, password_hash, role)
         VALUES
-            (?1, ?2, 'staff')
+            (?1, ?2, 'manager')
         ",
         params![username, password_hash],
     )
