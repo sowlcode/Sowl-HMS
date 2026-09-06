@@ -40,7 +40,7 @@ function App() {
             console.log("Checking session...");
             const currentSession = await invoke("get_session");
             console.log("Session from backend:", currentSession);
-            
+
             if (currentSession) {
                 setSession(currentSession);
                 console.log("Role set to:", currentSession.role);
@@ -69,7 +69,12 @@ function App() {
     }
 
     // Function to render content based on active page
+
     const renderContent = () => {
+        const handleNavigate = (page) => {
+            setActivePage(page);
+        };
+
         switch (activePage) {
             case "dashboard":
                 return <DashboardPage session={session} />;
@@ -82,7 +87,10 @@ function App() {
             case "customers":
                 return <CustomerPage session={session} />;
             case "room-registration":
-                return <RoomRegistrationPage session={session} />;
+                return <RoomRegistrationPage
+                    session={session}
+                    onNavigate={handleNavigate}
+                />;
             case "manager-account":
                 return <ManagerAccountPage session={session} />;
             default:

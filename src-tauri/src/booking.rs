@@ -77,23 +77,14 @@ fn get_connection(app: &AppHandle) -> Result<Connection, Box<dyn std::error::Err
     Ok(conn)
 }
 
-// ============================================================
-// CREATE BOOKING / REGISTRATION
-// ============================================================
-
 #[tauri::command]
 pub fn create_booking(
     app: AppHandle,
-
     customer_id: i64,
-
     check_in: Option<String>,
-
     male_count: i64,
     female_count: i64,
-
     relation: String,
-
     room_ids: Vec<i64>,
 ) -> Result<i64, String> {
     if room_ids.is_empty() {
@@ -113,14 +104,21 @@ pub fn create_booking(
     }
 
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
-    // Remove duplicate room IDs
+    // ============================================================
+    // REMOVE DUPLICATE ROOM IDs
+    // ============================================================
+
     let mut unique_rooms = room_ids.clone();
     unique_rooms.sort_unstable();
     unique_rooms.dedup();
 
-    // Verify customer exists
-    let customer_exists: bool = conn
+    // ============================================================
+    // VERIFY CUSTOMER EXISTS
+    // ============================================================
+
+    let customer_exists: bool = tx
         .query_row(
             "
             SELECT EXISTS(
@@ -138,85 +136,138 @@ pub fn create_booking(
         return Err("Customer does not exist.".to_string());
     }
 
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    // ============================================================
+    // CHECK FOR EXISTING ACTIVE REGISTRATION
+    // ============================================================
+    //
+    // If the customer already has an active registration,
+    // reuse it instead of creating another registration.
+    //
+    // Example:
+    //
+    // C1 -> Registration #1 -> Room 101
+    //
+    // Next day:
+    //
+    // C1 -> Registration #1 -> Room 101
+    //                         Room 201
+    //
+    // Only after checkout does Registration #1 become completed.
+    // ============================================================
 
-    // Current system time.
-    // SQLite CURRENT_TIMESTAMP is UTC.
-    // We use SQLite's timestamp consistently throughout the system.
-    let actual_check_in = match check_in {
-        Some(value) if !value.trim().is_empty() => value,
-        _ => "CURRENT_TIMESTAMP".to_string(),
+    let existing_registration: Option<i64> = tx
+        .query_row(
+            "
+            SELECT registration_id
+            FROM registrations
+            WHERE customer_id = ?1
+              AND status = 'active'
+            ORDER BY registration_id DESC
+            LIMIT 1
+            ",
+            params![customer_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let registration_id = match existing_registration {
+        Some(id) => {
+            // ====================================================
+            // EXISTING ACTIVE REGISTRATION
+            // ====================================================
+            //
+            // Do NOT create another registration.
+            // Reuse the customer's current registration.
+            //
+
+            id
+        }
+
+        None => {
+            // ====================================================
+            // NO ACTIVE REGISTRATION
+            // ====================================================
+            //
+            // Create a completely new registration.
+            //
+
+            let actual_check_in = match check_in {
+                Some(value) if !value.trim().is_empty() => value,
+                _ => "CURRENT_TIMESTAMP".to_string(),
+            };
+
+            if actual_check_in == "CURRENT_TIMESTAMP" {
+                tx.execute(
+                    "
+                    INSERT INTO registrations
+                    (
+                        customer_id,
+                        check_in,
+                        male_count,
+                        female_count,
+                        relation,
+                        status
+                    )
+                    VALUES
+                    (
+                        ?1,
+                        CURRENT_TIMESTAMP,
+                        ?2,
+                        ?3,
+                        ?4,
+                        'active'
+                    )
+                    ",
+                    params![customer_id, male_count, female_count, relation.trim()],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                tx.execute(
+                    "
+                    INSERT INTO registrations
+                    (
+                        customer_id,
+                        check_in,
+                        male_count,
+                        female_count,
+                        relation,
+                        status
+                    )
+                    VALUES
+                    (
+                        ?1,
+                        ?2,
+                        ?3,
+                        ?4,
+                        ?5,
+                        'active'
+                    )
+                    ",
+                    params![
+                        customer_id,
+                        actual_check_in,
+                        male_count,
+                        female_count,
+                        relation.trim()
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+
+            tx.last_insert_rowid()
+        }
     };
 
-    // ========================================================
-    // CREATE REGISTRATION
-    // ========================================================
-
-    if actual_check_in == "CURRENT_TIMESTAMP" {
-        tx.execute(
-            "
-            INSERT INTO registrations
-                (
-                    customer_id,
-                    check_in,
-                    male_count,
-                    female_count,
-                    relation,
-                    status
-                )
-            VALUES
-                (
-                    ?1,
-                    CURRENT_TIMESTAMP,
-                    ?2,
-                    ?3,
-                    ?4,
-                    'active'
-                )
-            ",
-            params![customer_id, male_count, female_count, relation.trim()],
-        )
-        .map_err(|e| e.to_string())?;
-    } else {
-        tx.execute(
-            "
-            INSERT INTO registrations
-                (
-                    customer_id,
-                    check_in,
-                    male_count,
-                    female_count,
-                    relation,
-                    status
-                )
-            VALUES
-                (
-                    ?1,
-                    ?2,
-                    ?3,
-                    ?4,
-                    ?5,
-                    'active'
-                )
-            ",
-            params![
-                customer_id,
-                actual_check_in,
-                male_count,
-                female_count,
-                relation.trim()
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    let registration_id = tx.last_insert_rowid();
-
-    // ========================================================
-    // ASSIGN ROOMS
-    // ========================================================
+    // ============================================================
+    // ASSIGN ROOMS TO THE REGISTRATION
+    // ============================================================
 
     for room_id in unique_rooms {
+        // --------------------------------------------------------
+        // CHECK ROOM STATUS
+        // --------------------------------------------------------
+
         let room_status: Option<String> = tx
             .query_row(
                 "
@@ -244,34 +295,65 @@ pub fn create_booking(
             ));
         }
 
-        // Add room to registration.
-        //
-        // check_out remains NULL until the entire registration
-        // checks out.
+        // --------------------------------------------------------
+        // MAKE SURE ROOM IS NOT ALREADY IN THIS REGISTRATION
+        // --------------------------------------------------------
+
+        let already_assigned: bool = tx
+            .query_row(
+                "
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM registration_rooms
+                    WHERE registration_id = ?1
+                      AND room_id = ?2
+                      AND status = 'active'
+                      AND check_out IS NULL
+                )
+                ",
+                params![registration_id, room_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        if already_assigned {
+            return Err(format!(
+                "Room {} is already assigned to this registration.",
+                room_id
+            ));
+        }
+
+        // --------------------------------------------------------
+        // ADD ROOM TO EXISTING REGISTRATION
+        // --------------------------------------------------------
+
         tx.execute(
             "
             INSERT INTO registration_rooms
-                (
-                    registration_id,
-                    room_id,
-                    check_in,
-                    check_out,
-                    status
-                )
+            (
+                registration_id,
+                room_id,
+                check_in,
+                check_out,
+                status
+            )
             VALUES
-                (
-                    ?1,
-                    ?2,
-                    CURRENT_TIMESTAMP,
-                    NULL,
-                    'active'
-                )
+            (
+                ?1,
+                ?2,
+                CURRENT_TIMESTAMP,
+                NULL,
+                'active'
+            )
             ",
             params![registration_id, room_id],
         )
         .map_err(|e| e.to_string())?;
 
-        // Mark room as occupied.
+        // --------------------------------------------------------
+        // MARK ROOM AS RESERVED
+        // --------------------------------------------------------
+
         tx.execute(
             "
             UPDATE rooms
@@ -561,7 +643,7 @@ pub fn change_registration_room(
 }
 
 // ============================================================
-// GET ONE BOOKING / REGISTRATION
+// GET ONE BOOKING / REGISTRATION - FIXED: Only active rooms
 // ============================================================
 
 #[tauri::command]
@@ -632,6 +714,8 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
             INNER JOIN rooms rm
                 ON rm.room_id = rr.room_id
             WHERE rr.registration_id = ?1
+              AND rr.status = 'active'
+              AND rr.check_out IS NULL
             ORDER BY rr.check_in ASC, rr.id ASC
             ",
         )
@@ -660,7 +744,7 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
 }
 
 // ============================================================
-// GET ALL ACTIVE REGISTRATIONS
+// GET ALL ACTIVE REGISTRATIONS - FIXED: Only active rooms
 // ============================================================
 
 #[tauri::command]
@@ -731,6 +815,8 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
                 INNER JOIN rooms rm
                     ON rm.room_id = rr.room_id
                 WHERE rr.registration_id = ?1
+                  AND rr.status = 'active'
+                  AND rr.check_out IS NULL
                 ORDER BY rr.check_in ASC, rr.id ASC
                 ",
             )
@@ -762,7 +848,7 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
 }
 
 // ============================================================
-// GET ROOMS OF A REGISTRATION
+// GET ROOMS OF A REGISTRATION - FIXED: Only active rooms
 // ============================================================
 
 #[tauri::command]
@@ -788,6 +874,8 @@ pub fn get_registration_rooms(
             INNER JOIN rooms rm
                 ON rm.room_id = rr.room_id
             WHERE rr.registration_id = ?1
+              AND rr.status = 'active'
+              AND rr.check_out IS NULL
             ORDER BY rr.check_in ASC, rr.id ASC
             ",
         )
@@ -1027,22 +1115,18 @@ pub fn checkout_registration(app: AppHandle, registration_id: i64) -> Result<(),
 // ============================================================
 
 #[tauri::command]
-pub fn checkout_room(
-    app: AppHandle,
-    registration_id: i64,
-    room_id: i64,
-) -> Result<(), String> {
+pub fn checkout_room(app: AppHandle, registration_id: i64, room_id: i64) -> Result<(), String> {
     // Get database path
-    let db_path = crate::database::database_path(&app)
-        .map_err(|e| format!("Database path error: {}", e))?;
+    let db_path =
+        crate::database::database_path(&app).map_err(|e| format!("Database path error: {}", e))?;
 
     // Open database
-    let conn = Connection::open(db_path)
-        .map_err(|e| format!("Database error: {}", e))?;
+    let conn = Connection::open(db_path).map_err(|e| format!("Database error: {}", e))?;
 
     // Check if room is active in this registration
-    let exists: bool = conn.query_row(
-        r#"
+    let exists: bool = conn
+        .query_row(
+            r#"
         SELECT EXISTS(
             SELECT 1 
             FROM registration_rooms 
@@ -1051,9 +1135,10 @@ pub fn checkout_room(
               AND status = 'active'
         )
         "#,
-        params![registration_id, room_id],
-        |row| row.get(0),
-    ).map_err(|e| format!("Failed to verify room assignment: {}", e))?;
+            params![registration_id, room_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to verify room assignment: {}", e))?;
 
     if !exists {
         return Err("Room not found or not active in this registration".to_string());
@@ -1070,7 +1155,8 @@ pub fn checkout_room(
           AND status = 'active'
         "#,
         params![registration_id, room_id],
-    ).map_err(|e| format!("Failed to checkout room: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to checkout room: {}", e))?;
 
     // Update room status back to available
     conn.execute(
@@ -1080,19 +1166,22 @@ pub fn checkout_room(
         WHERE room_id = ?1
         "#,
         params![room_id],
-    ).map_err(|e| format!("Failed to update room status: {}", e))?;
+    )
+    .map_err(|e| format!("Failed to update room status: {}", e))?;
 
     // Check if all rooms in registration are checked out
-    let active_rooms: i64 = conn.query_row(
-        r#"
+    let active_rooms: i64 = conn
+        .query_row(
+            r#"
         SELECT COUNT(*) 
         FROM registration_rooms 
         WHERE registration_id = ?1 
           AND status = 'active'
         "#,
-        params![registration_id],
-        |row| row.get(0),
-    ).map_err(|e| format!("Failed to count active rooms: {}", e))?;
+            params![registration_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to count active rooms: {}", e))?;
 
     // If no active rooms, update registration status to 'completed'
     if active_rooms == 0 {
@@ -1104,7 +1193,8 @@ pub fn checkout_room(
             WHERE registration_id = ?1
             "#,
             params![registration_id],
-        ).map_err(|e| format!("Failed to update registration status: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to update registration status: {}", e))?;
     }
 
     Ok(())

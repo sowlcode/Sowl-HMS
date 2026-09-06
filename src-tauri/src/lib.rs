@@ -48,6 +48,7 @@ pub fn run() {
             booking::checkout_room,
 
             booking::checkout_registration,
+            
 
             
 
