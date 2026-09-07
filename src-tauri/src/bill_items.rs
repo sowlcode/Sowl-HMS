@@ -1,21 +1,21 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{AppHandle, Manager};
+
+use crate::database::database_path;
 
 // ============================================================
 // DATABASE CONNECTION
 // ============================================================
 
-fn get_connection(app_data_dir: PathBuf) -> Result<Connection, String> {
-    let db_path = app_data_dir.join("sowl_hms.db");
-
-    let conn = Connection::open(db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-
-    conn.execute("PRAGMA foreign_keys = ON", [])
-        .map_err(|e| format!("Failed to enable foreign keys: {}", e))?;
-
+fn get_connection(app: &AppHandle) -> Result<Connection, Box<dyn std::error::Error>> {
+    let db_path: PathBuf = database_path(app)?;
+    
+    let conn = Connection::open(db_path)?;
+    
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    
     Ok(conn)
 }
 
@@ -112,7 +112,7 @@ fn verify_active_registration(
 
 #[tauri::command]
 pub fn add_service_to_registration(
-    app_data_dir: State<'_, PathBuf>,
+    app: AppHandle,
     request: AddServiceRequest,
 ) -> Result<i64, String> {
     if request.registration_id <= 0 {
@@ -127,7 +127,7 @@ pub fn add_service_to_registration(
         return Err("Quantity must be greater than 0".to_string());
     }
 
-    let conn = get_connection(app_data_dir.inner().clone())?;
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let tx = conn
         .unchecked_transaction()
@@ -272,7 +272,7 @@ pub fn add_service_to_registration(
 
 #[tauri::command]
 pub fn add_custom_bill_item(
-    app_data_dir: State<'_, PathBuf>,
+    app: AppHandle,
     request: AddCustomItemRequest,
 ) -> Result<i64, String> {
     if request.registration_id <= 0 {
@@ -291,7 +291,7 @@ pub fn add_custom_bill_item(
         return Err("Unit price cannot be negative".to_string());
     }
 
-    let conn = get_connection(app_data_dir.inner().clone())?;
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let tx = conn
         .unchecked_transaction()
@@ -347,22 +347,10 @@ pub fn add_custom_bill_item(
 // ============================================================
 // RETURN SERVICE QUANTITY
 // ============================================================
-//
-// Example:
-//
-// Customer takes 5 beers
-// Bill quantity = 5
-// Stock decreases by 5
-//
-// Customer returns 2 beers
-// Bill quantity = 3
-// Stock increases by 2
-//
-// ============================================================
 
 #[tauri::command]
 pub fn return_service_quantity(
-    app_data_dir: State<'_, PathBuf>,
+    app: AppHandle,
     request: ReturnServiceRequest,
 ) -> Result<(), String> {
     if request.bill_id <= 0 {
@@ -373,7 +361,7 @@ pub fn return_service_quantity(
         return Err("Return quantity must be greater than 0".to_string());
     }
 
-    let conn = get_connection(app_data_dir.inner().clone())?;
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let tx = conn
         .unchecked_transaction()
@@ -562,19 +550,16 @@ pub fn return_service_quantity(
 
 #[tauri::command]
 pub fn get_registration_bill(
-    app_data_dir: State<'_, PathBuf>,
+    app: AppHandle,
     registration_id: i64,
 ) -> Result<RegistrationBill, String> {
     if registration_id <= 0 {
         return Err("Invalid registration ID".to_string());
     }
 
-    let conn = get_connection(app_data_dir.inner().clone())?;
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
-    // --------------------------------------------------------
-    // CHECK REGISTRATION EXISTS
-    // --------------------------------------------------------
-
+    // Check registration exists
     let exists: bool = conn
         .query_row(
             r#"
@@ -596,10 +581,7 @@ pub fn get_registration_bill(
         ));
     }
 
-    // --------------------------------------------------------
-    // GET BILL ITEMS
-    // --------------------------------------------------------
-
+    // Get bill items
     let mut stmt = conn
         .prepare(
             r#"
@@ -608,25 +590,16 @@ pub fn get_registration_bill(
                 b.registration_id,
                 b.service_id,
                 b.item_type,
-                b.item_name,
+                COALESCE(b.item_name, '') as item_name,
                 b.quantity,
                 b.unit_price,
                 b.total,
                 b.added_at,
-
-                CASE
-                    WHEN b.service_id IS NOT NULL
-                    THEN COALESCE(fs.is_inventory, 0)
-                    ELSE 0
-                END AS is_inventory
-
+                COALESCE(fs.is_inventory, 0) as is_inventory
             FROM bill_items b
-
             LEFT JOIN food_services fs
                 ON fs.service_id = b.service_id
-
             WHERE b.registration_id = ?
-
             ORDER BY b.added_at ASC, b.bill_id ASC
             "#,
         )
@@ -649,24 +622,15 @@ pub fn get_registration_bill(
         })
         .map_err(|e| format!("Failed to read bill items: {}", e))?;
 
-    // --------------------------------------------------------
-    // BUILD BILL
-    // --------------------------------------------------------
-
     let mut items = Vec::new();
     let mut subtotal = 0.0;
 
     for row in rows {
         let item = row
             .map_err(|e| format!("Failed to read bill item: {}", e))?;
-
         subtotal += item.total;
-
         items.push(item);
     }
-
-    // Currently there is no tax/service tax logic in your schema,
-    // so total is the same as subtotal.
 
     let total = subtotal;
 
@@ -681,23 +645,17 @@ pub fn get_registration_bill(
 // ============================================================
 // DELETE CUSTOM BILL ITEM
 // ============================================================
-//
-// Only custom items can be directly deleted.
-//
-// Inventory/service items should use return_service_quantity()
-// so that inventory is correctly restored.
-// ============================================================
 
 #[tauri::command]
 pub fn delete_custom_bill_item(
-    app_data_dir: State<'_, PathBuf>,
+    app: AppHandle,
     bill_id: i64,
 ) -> Result<(), String> {
     if bill_id <= 0 {
         return Err("Invalid bill ID".to_string());
     }
 
-    let conn = get_connection(app_data_dir.inner().clone())?;
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let tx = conn
         .unchecked_transaction()

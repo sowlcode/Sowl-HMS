@@ -1220,12 +1220,6 @@ export default function FoodServicesPage() {
                                                             Inventory
                                                         </span>
                                                     )}
-                                                    {hasStock && isLowStock && (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                                                            <AlertCircle className="w-3 h-3" />
-                                                            Low Stock
-                                                        </span>
-                                                    )}
                                                 </div>
                                             </div>
 

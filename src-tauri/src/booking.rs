@@ -841,15 +841,14 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
             params![registration_id],
             |row| {
                 // Get male_count and female_count from registration_rooms
-                // Since all rooms should have the same counts, we can get from the first room
+                // Handle case where there are no active rooms
                 let (male_count, female_count): (i64, i64) = conn
                     .query_row(
                         "
-                        SELECT male_count, female_count
+                        SELECT COALESCE(SUM(male_count), 0), COALESCE(SUM(female_count), 0)
                         FROM registration_rooms
                         WHERE registration_id = ?1
                           AND status = 'active'
-                        LIMIT 1
                         ",
                         params![registration_id],
                         |row| Ok((row.get(0)?, row.get(1)?)),
@@ -882,6 +881,7 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
         }
     };
 
+    // Get rooms - this will return empty if no active rooms
     let mut stmt = conn
         .prepare(
             "
@@ -930,7 +930,6 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
 
     Ok(booking)
 }
-
 // ============================================================
 // GET ALL ACTIVE REGISTRATIONS
 // ============================================================

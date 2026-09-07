@@ -25,7 +25,11 @@ import {
   UserRound,
   Wrench,
   Filter,
+  CreditCard,
 } from "lucide-react";
+
+// Import BillingPage
+import BillingPage from "./BillingPage";
 
 // ============================================================
 // SHARED UI PRIMITIVES
@@ -312,6 +316,10 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
     const [customers, setCustomers] = useState([]);
     const [rooms, setRooms] = useState([]);
     const [activeBookings, setActiveBookings] = useState([]);
+
+    // Billing page state
+    const [showBillingPage, setShowBillingPage] = useState(false);
+    const [billingRegistrationId, setBillingRegistrationId] = useState(null);
 
     // Search
     const [searchQuery, setSearchQuery] = useState("");
@@ -676,6 +684,14 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         }
     }
 
+    function handleOpenBilling() {
+        setContextMenu(null);
+        if (contextBooking) {
+            setBillingRegistrationId(contextBooking.registration_id);
+            setShowBillingPage(true);
+        }
+    }
+
     async function handleCheckoutRoom() {
         if (!contextRoom || !contextBooking) return;
         setContextMenu(null);
@@ -980,8 +996,8 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                     registration_id: info.registration_id,
                 });
 
-                const menuWidth = 220;
-                const menuHeight = 220;
+                const menuWidth = 260;
+                const menuHeight = 250;
                 let x = e.clientX;
                 let y = e.clientY;
 
@@ -1004,6 +1020,23 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         value: String(r.room_id),
         label: `Room ${r.room_number} • ${r.no_of_beds} bed${r.no_of_beds > 1 ? "s" : ""} • ₹${r.room_rate}/night`,
     }));
+
+    // ============================================================
+    // RENDER - Billing Page
+    // ============================================================
+
+    if (showBillingPage && billingRegistrationId) {
+        return (
+            <BillingPage
+                registrationId={billingRegistrationId}
+                onBack={() => {
+                    setShowBillingPage(false);
+                    setBillingRegistrationId(null);
+                }}
+                session={session}
+            />
+        );
+    }
 
     // Loading state
     if (loading && rooms.length === 0) {
@@ -1216,7 +1249,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
             {contextMenu && contextRoom && contextBooking && (
                 <div
                     ref={contextMenuRef}
-                    className="fixed z-50 min-w-[200px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
+                    className="fixed z-50 min-w-[220px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
                     style={{ left: contextMenu.x, top: contextMenu.y }}
                 >
                     <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
@@ -1239,8 +1272,15 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                         View Full Registration
                     </button>
                     <button
+                        onClick={handleOpenBilling}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-green-50 hover:text-green-700 border-t border-gray-100"
+                    >
+                        <CreditCard className="w-4 h-4" />
+                        Billing
+                    </button>
+                    <button
                         onClick={handleOpenChangeRoom}
-                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-amber-50 hover:text-amber-700"
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-amber-50 hover:text-amber-700 border-t border-gray-100"
                     >
                         <ArrowRightLeft className="w-4 h-4" />
                         Change Room
@@ -1433,12 +1473,26 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                 </div>
                             )}
 
+                            {/* Billing Button in Customer Popup */}
+                            <button
+                                onClick={() => {
+                                    setShowCustomerPopup(false);
+                                    setCustomerPopupData(null);
+                                    setBillingRegistrationId(customerPopupData.registration_id);
+                                    setShowBillingPage(true);
+                                }}
+                                className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg"
+                            >
+                                <CreditCard className="w-4 h-4" />
+                                Billing
+                            </button>
+
                             <button
                                 onClick={() => {
                                     setShowCustomerPopup(false);
                                     setCustomerPopupData(null);
                                 }}
-                                className="mt-6 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
+                                className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
                             >
                                 Close
                             </button>
@@ -1990,6 +2044,21 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                     );
                                 })}
                             </div>
+
+                            {/* Billing Button in Registration Popup */}
+                            <button
+                                onClick={() => {
+                                    setShowRegistrationPopup(false);
+                                    setSelectedRegistration(null);
+                                    setRegistrationRooms([]);
+                                    setBillingRegistrationId(selectedRegistration.registration_id);
+                                    setShowBillingPage(true);
+                                }}
+                                className="inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg mb-2"
+                            >
+                                <CreditCard className="w-4 h-4" />
+                                View Billing
+                            </button>
 
                             {/* Checkout All */}
                             {selectedRegistration.status === "active" && registrationRooms.length > 0 && (
