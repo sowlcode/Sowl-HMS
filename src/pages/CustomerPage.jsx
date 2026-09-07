@@ -1344,7 +1344,7 @@ function CustomerPage() {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                                     <div className="flex items-center gap-1">
                                         <ClockIcon className="w-3 h-3" />
-                                        Created
+                                        Registered
                                     </div>
                                 </th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">

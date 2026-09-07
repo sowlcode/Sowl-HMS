@@ -41,6 +41,9 @@ pub struct BookingRoom {
     pub room_number: String,
     pub room_rate: f64,
 
+    pub male_count: i64,
+    pub female_count: i64,
+
     pub check_in: String,
     pub check_out: Option<String>,
 
@@ -63,6 +66,18 @@ pub struct RoomHistory {
     pub status: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct RegistrationHistory {
+    pub registration_id: i64,
+    pub customer_name: String,
+    pub phone_number: String,
+    pub relation: String,
+    pub status: String,
+    pub check_in: String,
+    pub check_out: Option<String>,
+    pub room_count: i64,
+}
+
 // ============================================================
 // DATABASE CONNECTION
 // ============================================================
@@ -76,6 +91,43 @@ fn get_connection(app: &AppHandle) -> Result<Connection, Box<dyn std::error::Err
 
     Ok(conn)
 }
+
+// ============================================================
+// HELPER: CREATE ROOM BILL ITEM
+// ============================================================
+
+fn create_room_bill_item(
+    tx: &Connection,
+    registration_id: i64,
+    room_id: i64,
+    room_rate: f64,
+    room_number: &str,
+) -> Result<(), String> {
+    let item_name = format!("Room Charge ({})", room_number);
+
+    tx.execute(
+        r#"
+        INSERT INTO bill_items (
+            registration_id,
+            service_id,
+            item_type,
+            item_name,
+            quantity,
+            unit_price,
+            total
+        )
+        VALUES (?, NULL, 'room', ?, 1, ?, ?)
+        "#,
+        params![registration_id, item_name, room_rate, room_rate],
+    )
+    .map_err(|e| format!("Failed to create room bill item: {}", e))?;
+
+    Ok(())
+}
+
+// ============================================================
+// CREATE BOOKING - UPDATED WITH BILL ITEMS
+// ============================================================
 
 #[tauri::command]
 pub fn create_booking(
@@ -190,6 +242,8 @@ pub fn create_booking(
             // ====================================================
             //
             // Create a completely new registration.
+            // NOTE: male_count and female_count are NOT stored in registrations table
+            // They are stored per room in registration_rooms
             //
 
             let actual_check_in = match check_in {
@@ -204,8 +258,6 @@ pub fn create_booking(
                     (
                         customer_id,
                         check_in,
-                        male_count,
-                        female_count,
                         relation,
                         status
                     )
@@ -214,12 +266,10 @@ pub fn create_booking(
                         ?1,
                         CURRENT_TIMESTAMP,
                         ?2,
-                        ?3,
-                        ?4,
                         'active'
                     )
                     ",
-                    params![customer_id, male_count, female_count, relation.trim()],
+                    params![customer_id, relation.trim()],
                 )
                 .map_err(|e| e.to_string())?;
             } else {
@@ -229,8 +279,6 @@ pub fn create_booking(
                     (
                         customer_id,
                         check_in,
-                        male_count,
-                        female_count,
                         relation,
                         status
                     )
@@ -239,18 +287,10 @@ pub fn create_booking(
                         ?1,
                         ?2,
                         ?3,
-                        ?4,
-                        ?5,
                         'active'
                     )
                     ",
-                    params![
-                        customer_id,
-                        actual_check_in,
-                        male_count,
-                        female_count,
-                        relation.trim()
-                    ],
+                    params![customer_id, actual_check_in, relation.trim()],
                 )
                 .map_err(|e| e.to_string())?;
             }
@@ -260,38 +300,30 @@ pub fn create_booking(
     };
 
     // ============================================================
-    // ASSIGN ROOMS TO THE REGISTRATION
+    // ASSIGN ROOMS TO THE REGISTRATION & CREATE BILL ITEMS
     // ============================================================
 
     for room_id in unique_rooms {
         // --------------------------------------------------------
-        // CHECK ROOM STATUS
+        // CHECK ROOM STATUS AND GET ROOM RATE & NUMBER
         // --------------------------------------------------------
 
-        let room_status: Option<String> = tx
+        let (room_status, room_rate, room_number): (String, f64, String) = tx
             .query_row(
                 "
-                SELECT status
+                SELECT status, room_rate, room_number
                 FROM rooms
                 WHERE room_id = ?1
                 ",
                 params![room_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
-            .optional()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("Room ID {} does not exist or error: {}", room_id, e))?;
 
-        let status = match room_status {
-            Some(status) => status,
-            None => {
-                return Err(format!("Room ID {} does not exist.", room_id));
-            }
-        };
-
-        if status != "available" {
+        if room_status != "available" {
             return Err(format!(
                 "Room {} is not available. Current status: {}",
-                room_id, status
+                room_id, room_status
             ));
         }
 
@@ -325,6 +357,7 @@ pub fn create_booking(
 
         // --------------------------------------------------------
         // ADD ROOM TO EXISTING REGISTRATION
+        // Stores male_count and female_count per room
         // --------------------------------------------------------
 
         tx.execute(
@@ -333,6 +366,8 @@ pub fn create_booking(
             (
                 registration_id,
                 room_id,
+                male_count,
+                female_count,
                 check_in,
                 check_out,
                 status
@@ -341,14 +376,29 @@ pub fn create_booking(
             (
                 ?1,
                 ?2,
+                ?3,
+                ?4,
                 CURRENT_TIMESTAMP,
                 NULL,
                 'active'
             )
             ",
-            params![registration_id, room_id],
+            params![registration_id, room_id, male_count, female_count],
         )
         .map_err(|e| e.to_string())?;
+
+        // --------------------------------------------------------
+        // CREATE BILL ITEM FOR ROOM CHARGE
+        // --------------------------------------------------------
+        // This creates a bill item with:
+        // - item_type = 'room'
+        // - item_name = 'Room Charge (room_number)'
+        // - quantity = 1
+        // - unit_price = room_rate
+        // - total = room_rate * 1
+        // --------------------------------------------------------
+
+        create_room_bill_item(&tx, registration_id, room_id, room_rate, &room_number)?;
 
         // --------------------------------------------------------
         // MARK ROOM AS RESERVED
@@ -371,7 +421,7 @@ pub fn create_booking(
 }
 
 // ============================================================
-// ADD ANOTHER ROOM TO EXISTING REGISTRATION
+// ADD ANOTHER ROOM TO EXISTING REGISTRATION - UPDATED WITH BILL ITEM
 // ============================================================
 
 #[tauri::command]
@@ -408,37 +458,51 @@ pub fn add_room_to_registration(
         }
     }
 
-    // Check room
-    let room_status: Option<String> = tx
+    // Get the male_count and female_count from an existing room in this registration
+    // Since all rooms in a registration should have the same counts
+    let (male_count, female_count): (i64, i64) = tx
         .query_row(
             "
-            SELECT status
+            SELECT male_count, female_count
+            FROM registration_rooms
+            WHERE registration_id = ?1
+              AND status = 'active'
+            LIMIT 1
+            ",
+            params![registration_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Check room and get room rate and number
+    let (room_status, room_rate, room_number): (String, f64, String) = tx
+        .query_row(
+            "
+            SELECT status, room_rate, room_number
             FROM rooms
             WHERE room_id = ?1
             ",
             params![room_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
-        .optional()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Room does not exist: {}", e))?;
 
-    match room_status {
-        Some(status) if status == "available" => {}
-        Some(status) => {
-            return Err(format!("Room is not available. Current status: {}", status));
-        }
-        None => {
-            return Err("Room does not exist.".to_string());
-        }
+    if room_status != "available" {
+        return Err(format!(
+            "Room is not available. Current status: {}",
+            room_status
+        ));
     }
 
-    // Add room
+    // Add room - with male_count and female_count
     tx.execute(
         "
         INSERT INTO registration_rooms
             (
                 registration_id,
                 room_id,
+                male_count,
+                female_count,
                 check_in,
                 check_out,
                 status
@@ -447,14 +511,19 @@ pub fn add_room_to_registration(
             (
                 ?1,
                 ?2,
+                ?3,
+                ?4,
                 CURRENT_TIMESTAMP,
                 NULL,
                 'active'
             )
         ",
-        params![registration_id, room_id],
+        params![registration_id, room_id, male_count, female_count],
     )
     .map_err(|e| e.to_string())?;
+
+    // Create bill item for room charge
+    create_room_bill_item(&tx, registration_id, room_id, room_rate, &room_number)?;
 
     // Occupy room
     tx.execute(
@@ -473,7 +542,7 @@ pub fn add_room_to_registration(
 }
 
 // ============================================================
-// CHANGE ROOM
+// CHANGE ROOM - UPDATED WITH BILL ITEM
 //
 // The old room assignment is CLOSED and preserved in history.
 // A new registration_rooms record is created for the new room.
@@ -526,6 +595,21 @@ pub fn change_registration_room(
         }
     }
 
+    // Get the male_count and female_count from an existing room in this registration
+    let (male_count, female_count): (i64, i64) = tx
+        .query_row(
+            "
+            SELECT male_count, female_count
+            FROM registration_rooms
+            WHERE registration_id = ?1
+              AND status = 'active'
+            LIMIT 1
+            ",
+            params![registration_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
     // Check old room assignment
     let assignment_exists: bool = tx
         .query_row(
@@ -548,31 +632,24 @@ pub fn change_registration_room(
         return Err("The old room is not currently assigned to this registration.".to_string());
     }
 
-    // Check new room
-    let new_room_status: Option<String> = tx
+    // Check new room and get room rate and number
+    let (new_room_status, new_room_rate, new_room_number): (String, f64, String) = tx
         .query_row(
             "
-            SELECT status
+            SELECT status, room_rate, room_number
             FROM rooms
             WHERE room_id = ?1
             ",
             params![new_room_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
-        .optional()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("New room does not exist: {}", e))?;
 
-    match new_room_status {
-        Some(status) if status == "available" => {}
-        Some(status) => {
-            return Err(format!(
-                "New room is not available. Current status: {}",
-                status
-            ));
-        }
-        None => {
-            return Err("New room does not exist.".to_string());
-        }
+    if new_room_status != "available" {
+        return Err(format!(
+            "New room is not available. Current status: {}",
+            new_room_status
+        ));
     }
 
     // Close old room assignment
@@ -602,13 +679,15 @@ pub fn change_registration_room(
     )
     .map_err(|e| e.to_string())?;
 
-    // Add new room
+    // Add new room - with male_count and female_count
     tx.execute(
         "
         INSERT INTO registration_rooms
             (
                 registration_id,
                 room_id,
+                male_count,
+                female_count,
                 check_in,
                 check_out,
                 status
@@ -617,14 +696,37 @@ pub fn change_registration_room(
             (
                 ?1,
                 ?2,
+                ?3,
+                ?4,
                 CURRENT_TIMESTAMP,
                 NULL,
                 'active'
             )
         ",
-        params![registration_id, new_room_id],
+        params![registration_id, new_room_id, male_count, female_count],
     )
     .map_err(|e| e.to_string())?;
+
+    // Delete old room bill item (the latest one for this registration)
+    tx.execute(
+        "
+        DELETE FROM bill_items 
+        WHERE registration_id = ?1 
+          AND item_type = 'room'
+          AND bill_id = (
+              SELECT bill_id FROM bill_items 
+              WHERE registration_id = ?1 
+                AND item_type = 'room' 
+              ORDER BY added_at DESC 
+              LIMIT 1
+          )
+        ",
+        params![registration_id],
+    )
+    .map_err(|e| format!("Failed to delete old bill item: {}", e))?;
+
+    // Create new room bill item with new rate
+    create_room_bill_item(&tx, registration_id, new_room_id, new_room_rate, &new_room_number)?;
 
     // Occupy new room
     tx.execute(
@@ -643,7 +745,75 @@ pub fn change_registration_room(
 }
 
 // ============================================================
-// GET ONE BOOKING / REGISTRATION - FIXED: Only active rooms
+// GET BILL ITEMS FOR REGISTRATION
+// ============================================================
+
+#[derive(Debug, Serialize)]
+pub struct BillItem {
+    pub bill_id: i64,
+    pub registration_id: i64,
+    pub service_id: Option<i64>,
+    pub item_type: String,
+    pub item_name: String,
+    pub quantity: f64,
+    pub unit_price: f64,
+    pub total: f64,
+    pub added_at: String,
+}
+
+#[tauri::command]
+pub fn get_registration_bill_items(
+    app: AppHandle,
+    registration_id: i64,
+) -> Result<Vec<BillItem>, String> {
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT 
+                bill_id,
+                registration_id,
+                service_id,
+                item_type,
+                item_name,
+                quantity,
+                unit_price,
+                total,
+                added_at
+            FROM bill_items 
+            WHERE registration_id = ?1
+            ORDER BY added_at DESC
+            ",
+        )
+        .map_err(|e| format!("Prepare error: {}", e))?;
+
+    let rows = stmt
+        .query_map(params![registration_id], |row| {
+            Ok(BillItem {
+                bill_id: row.get(0)?,
+                registration_id: row.get(1)?,
+                service_id: row.get(2)?,
+                item_type: row.get(3)?,
+                item_name: row.get(4)?,
+                quantity: row.get(5)?,
+                unit_price: row.get(6)?,
+                total: row.get(7)?,
+                added_at: row.get(8)?,
+            })
+        })
+        .map_err(|e| format!("Query error: {}", e))?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row.map_err(|e| format!("Row error: {}", e))?);
+    }
+
+    Ok(items)
+}
+
+// ============================================================
+// GET ONE BOOKING / REGISTRATION
 // ============================================================
 
 #[tauri::command]
@@ -661,8 +831,6 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
                 r.check_in,
                 r.check_out,
                 r.booking_datetime,
-                r.male_count,
-                r.female_count,
                 r.relation,
                 r.status
             FROM registrations r
@@ -672,6 +840,22 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
             ",
             params![registration_id],
             |row| {
+                // Get male_count and female_count from registration_rooms
+                // Since all rooms should have the same counts, we can get from the first room
+                let (male_count, female_count): (i64, i64) = conn
+                    .query_row(
+                        "
+                        SELECT male_count, female_count
+                        FROM registration_rooms
+                        WHERE registration_id = ?1
+                          AND status = 'active'
+                        LIMIT 1
+                        ",
+                        params![registration_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .unwrap_or((0, 0));
+
                 Ok(Booking {
                     registration_id: row.get(0)?,
                     customer_id: row.get(1)?,
@@ -680,10 +864,10 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
                     check_in: row.get(4)?,
                     check_out: row.get(5)?,
                     booking_datetime: row.get(6)?,
-                    male_count: row.get(7)?,
-                    female_count: row.get(8)?,
-                    relation: row.get(9)?,
-                    status: row.get(10)?,
+                    male_count,
+                    female_count,
+                    relation: row.get(7)?,
+                    status: row.get(8)?,
                     rooms: Vec::new(),
                 })
             },
@@ -707,6 +891,8 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
                 rr.room_id,
                 rm.room_number,
                 rm.room_rate,
+                rr.male_count,
+                rr.female_count,
                 rr.check_in,
                 rr.check_out,
                 rr.status
@@ -729,9 +915,11 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
                 room_id: row.get(2)?,
                 room_number: row.get(3)?,
                 room_rate: row.get(4)?,
-                check_in: row.get(5)?,
-                check_out: row.get(6)?,
-                status: row.get(7)?,
+                male_count: row.get(5)?,
+                female_count: row.get(6)?,
+                check_in: row.get(7)?,
+                check_out: row.get(8)?,
+                status: row.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -744,7 +932,7 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
 }
 
 // ============================================================
-// GET ALL ACTIVE REGISTRATIONS - FIXED: Only active rooms
+// GET ALL ACTIVE REGISTRATIONS
 // ============================================================
 
 #[tauri::command]
@@ -762,8 +950,6 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
                 r.check_in,
                 r.check_out,
                 r.booking_datetime,
-                r.male_count,
-                r.female_count,
                 r.relation,
                 r.status
             FROM registrations r
@@ -777,6 +963,7 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
 
     let rows = stmt
         .query_map([], |row| {
+            // We'll get male_count and female_count from the rooms later
             Ok(Booking {
                 registration_id: row.get(0)?,
                 customer_id: row.get(1)?,
@@ -785,10 +972,10 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
                 check_in: row.get(4)?,
                 check_out: row.get(5)?,
                 booking_datetime: row.get(6)?,
-                male_count: row.get(7)?,
-                female_count: row.get(8)?,
-                relation: row.get(9)?,
-                status: row.get(10)?,
+                male_count: 0,   // Will be filled later
+                female_count: 0, // Will be filled later
+                relation: row.get(7)?,
+                status: row.get(8)?,
                 rooms: Vec::new(),
             })
         })
@@ -799,6 +986,7 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
     for row in rows {
         let mut booking = row.map_err(|e| e.to_string())?;
 
+        // Get rooms for this booking
         let mut room_stmt = conn
             .prepare(
                 "
@@ -808,6 +996,8 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
                     rr.room_id,
                     rm.room_number,
                     rm.room_rate,
+                    rr.male_count,
+                    rr.female_count,
                     rr.check_in,
                     rr.check_out,
                     rr.status
@@ -830,16 +1020,28 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
                     room_id: row.get(2)?,
                     room_number: row.get(3)?,
                     room_rate: row.get(4)?,
-                    check_in: row.get(5)?,
-                    check_out: row.get(6)?,
-                    status: row.get(7)?,
+                    male_count: row.get(5)?,
+                    female_count: row.get(6)?,
+                    check_in: row.get(7)?,
+                    check_out: row.get(8)?,
+                    status: row.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?;
 
+        let mut total_male = 0;
+        let mut total_female = 0;
+
         for room in room_rows {
-            booking.rooms.push(room.map_err(|e| e.to_string())?);
+            let room_data = room.map_err(|e| e.to_string())?;
+            total_male += room_data.male_count;
+            total_female += room_data.female_count;
+            booking.rooms.push(room_data);
         }
+
+        // Set the total male/female counts for the booking
+        booking.male_count = total_male;
+        booking.female_count = total_female;
 
         bookings.push(booking);
     }
@@ -848,7 +1050,7 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
 }
 
 // ============================================================
-// GET ROOMS OF A REGISTRATION - FIXED: Only active rooms
+// GET ROOMS OF A REGISTRATION
 // ============================================================
 
 #[tauri::command]
@@ -867,6 +1069,8 @@ pub fn get_registration_rooms(
                 rr.room_id,
                 rm.room_number,
                 rm.room_rate,
+                rr.male_count,
+                rr.female_count,
                 rr.check_in,
                 rr.check_out,
                 rr.status
@@ -889,9 +1093,11 @@ pub fn get_registration_rooms(
                 room_id: row.get(2)?,
                 room_number: row.get(3)?,
                 room_rate: row.get(4)?,
-                check_in: row.get(5)?,
-                check_out: row.get(6)?,
-                status: row.get(7)?,
+                male_count: row.get(5)?,
+                female_count: row.get(6)?,
+                check_in: row.get(7)?,
+                check_out: row.get(8)?,
+                status: row.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -911,12 +1117,7 @@ pub fn get_registration_rooms(
 
 #[tauri::command]
 pub fn get_registration_history(app: AppHandle) -> Result<Vec<RegistrationHistory>, String> {
-    // Get database path
-    let db_path =
-        crate::database::database_path(&app).map_err(|e| format!("Database path error: {}", e))?;
-
-    // Open database
-    let conn = Connection::open(db_path).map_err(|e| format!("Database error: {}", e))?;
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     // Prepare query - get all registrations oldest to latest
     let mut stmt = conn
@@ -926,8 +1127,6 @@ pub fn get_registration_history(app: AppHandle) -> Result<Vec<RegistrationHistor
                 r.registration_id,
                 c.name as customer_name,
                 c.phone_number,
-                r.male_count,
-                r.female_count,
                 r.relation,
                 r.status,
                 r.check_in,
@@ -949,13 +1148,11 @@ pub fn get_registration_history(app: AppHandle) -> Result<Vec<RegistrationHistor
                 registration_id: row.get(0)?,
                 customer_name: row.get(1)?,
                 phone_number: row.get(2)?,
-                male_count: row.get(3)?,
-                female_count: row.get(4)?,
-                relation: row.get(5)?,
-                status: row.get(6)?,
-                check_in: row.get(7)?,
-                check_out: row.get(8)?,
-                room_count: row.get(9)?,
+                relation: row.get(3)?,
+                status: row.get(4)?,
+                check_in: row.get(5)?,
+                check_out: row.get(6)?,
+                room_count: row.get(7)?,
             })
         })
         .map_err(|e| format!("Failed to retrieve history: {}", e))?
@@ -963,24 +1160,6 @@ pub fn get_registration_history(app: AppHandle) -> Result<Vec<RegistrationHistor
         .map_err(|e| format!("Failed to read history: {}", e))?;
 
     Ok(history)
-}
-
-// ============================================================
-// REGISTRATION HISTORY MODEL
-// ============================================================
-
-#[derive(Debug, Serialize)]
-pub struct RegistrationHistory {
-    pub registration_id: i64,
-    pub customer_name: String,
-    pub phone_number: String,
-    pub male_count: i64,
-    pub female_count: i64,
-    pub relation: String,
-    pub status: String,
-    pub check_in: String,
-    pub check_out: Option<String>,
-    pub room_count: i64,
 }
 
 // ============================================================
@@ -1116,12 +1295,7 @@ pub fn checkout_registration(app: AppHandle, registration_id: i64) -> Result<(),
 
 #[tauri::command]
 pub fn checkout_room(app: AppHandle, registration_id: i64, room_id: i64) -> Result<(), String> {
-    // Get database path
-    let db_path =
-        crate::database::database_path(&app).map_err(|e| format!("Database path error: {}", e))?;
-
-    // Open database
-    let conn = Connection::open(db_path).map_err(|e| format!("Database error: {}", e))?;
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     // Check if room is active in this registration
     let exists: bool = conn

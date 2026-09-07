@@ -34,7 +34,8 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
-            role TEXT NOT NULL CHECK (role IN ('admin', 'manager'))
+            role TEXT NOT NULL CHECK (role IN ('admin', 'manager')),
+            is_deleted BOOLEAN NOT NULL DEFAULT 0
         );
         ",
     )?;
@@ -54,7 +55,8 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
             document_number TEXT,
             document_pic TEXT,
             nationality TEXT,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0
         );
         "#,
         [],
@@ -91,33 +93,30 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
     conn.execute(
         r#"
     CREATE TABLE IF NOT EXISTS registrations (
-        registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-        customer_id INTEGER NOT NULL,
+    customer_id INTEGER NOT NULL,
 
-        check_in DATETIME NOT NULL,
-        check_out DATETIME,
+    check_in DATETIME NOT NULL,
+    check_out DATETIME,
 
-        booking_datetime DATETIME NOT NULL
-            DEFAULT CURRENT_TIMESTAMP,
+    booking_datetime DATETIME NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
 
-        male_count INTEGER NOT NULL DEFAULT 0,
-        female_count INTEGER NOT NULL DEFAULT 0,
+    relation TEXT NOT NULL,
 
-        relation TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN (
+            'active',
+            'completed',
+            'cancelled'
+        )),
 
-        status TEXT NOT NULL DEFAULT 'active'
-            CHECK (status IN (
-                'active',
-                'completed',
-                'cancelled'
-            )),
-
-        FOREIGN KEY (customer_id)
-            REFERENCES customers(customer_id)
-            ON DELETE RESTRICT
-            ON UPDATE CASCADE
-    );
+    FOREIGN KEY (customer_id)
+        REFERENCES customers(customer_id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
+);
     "#,
         [],
     )?;
@@ -133,6 +132,9 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
 
     registration_id INTEGER NOT NULL,
     room_id INTEGER NOT NULL,
+
+    male_count INTEGER NOT NULL DEFAULT 0,
+    female_count INTEGER NOT NULL DEFAULT 0,
 
     check_in DATETIME NOT NULL,
     check_out DATETIME,
@@ -154,11 +156,71 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
         ON DELETE RESTRICT
         ON UPDATE CASCADE
 );
+    "#,
+        [],
+    )?;
+
+    // ============================================================
+    // FOOD & SERVICES
+    // ============================================================
+
+    conn.execute(
+        r#"
+    CREATE TABLE IF NOT EXISTS food_services (
+        service_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        service_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
+        stock INTEGER,
+        picture TEXT,
+        is_inventory BOOLEAN NOT NULL DEFAULT 0,
+        is_deleted BOOLEAN NOT NULL DEFAULT 0
     );
     "#,
         [],
     )?;
 
+    // ============================================================
+// BILL ITEMS
+// ============================================================
+
+conn.execute(
+    r#"
+CREATE TABLE IF NOT EXISTS bill_items (
+    bill_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    registration_id INTEGER NOT NULL,
+
+    service_id INTEGER,
+    item_name TEXT,
+    item_type TEXT NOT NULL
+        CHECK (item_type IN (
+            'room',
+            'service',
+            'custom'
+        )),
+
+    quantity DECIMAL(10,2) NOT NULL DEFAULT 1,
+
+    unit_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+
+    total DECIMAL(10,2) NOT NULL DEFAULT 0,
+
+    added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (registration_id)
+        REFERENCES registrations(registration_id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    FOREIGN KEY (service_id)
+        REFERENCES food_services(service_id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
+);
+"#,
+    [],
+)?;
     // ============================================================
     // SEED ADMIN
     // ============================================================
@@ -178,6 +240,7 @@ fn seed_admin(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
             SELECT 1
             FROM users
             WHERE username = ?1
+            AND is_deleted = 0
         )
         ",
         [username],

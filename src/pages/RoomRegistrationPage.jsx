@@ -277,12 +277,17 @@ function RoomCard({ room, onClick, onContextMenu, isSelected = false, getReserve
                         <User className="h-3.5 w-3.5 flex-shrink-0" />
                         <span className="truncate">{info.customer_name}</span>
                     </div>
-                    {info.room_count > 1 && (
-                        <div className="mt-0.5 flex items-center gap-1 text-xs text-rose-400">
-                            <span className={`inline-block h-2 w-2 rounded-full ${groupColor}`} />
-                            <span>{info.room_count} rooms in group</span>
-                        </div>
-                    )}
+                    {/* Show guest counts per room - using info which has per-room counts */}
+                    <div className="mt-0.5 flex items-center gap-2 text-xs text-rose-400">
+                        <span>👤 {info.male_count}M / {info.female_count}F</span>
+                        {info.room_count > 1 && (
+                            <>
+                                <span>•</span>
+                                <span className={`inline-block h-2 w-2 rounded-full ${groupColor}`} />
+                                <span>{info.room_count} rooms </span>
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -327,6 +332,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
     const [contextMenu, setContextMenu] = useState(null);
     const [contextRoom, setContextRoom] = useState(null);
     const [contextBooking, setContextBooking] = useState(null);
+    const contextMenuRef = useRef(null);
 
     // Registration popup
     const [showRegistrationPopup, setShowRegistrationPopup] = useState(false);
@@ -375,6 +381,10 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         "3": { label: "3rd Floor", icon: Building2 },
         "4": { label: "4th Floor", icon: Building2 },
         "5": { label: "5th Floor", icon: Building2 },
+        "6": { label: "6th Floor", icon: Building2 },
+        "7": { label: "7th Floor", icon: Building2 },
+        "8": { label: "8th Floor", icon: Building2 },
+        "9": { label: "9th Floor", icon: Building2 },
         other: { label: "Other", icon: Building2 },
     };
 
@@ -386,7 +396,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
     ];
 
     const bedFilterOptions = [
-        { value: "all", label: "All Beds" },
+        { value: "all", label: "Beds" },
         { value: "1", label: "1 Bed" },
         { value: "2", label: "2 Beds" },
         { value: "3", label: "3 Beds" },
@@ -429,7 +439,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         return matchesSearch && matchesBedFilter;
     });
 
-    const floors = ["ground", "1", "2", "3", "4", "5"];
+    const floors = ["ground", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
     const roomsByFloor = floors.reduce((acc, floor) => {
         acc[floor] = filteredRooms
             .filter((room) => getFloorFromRoom(room.room_number) === floor)
@@ -441,21 +451,27 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         return acc;
     }, {});
 
+    // FIXED: Always use per-room counts from roomData, never fall back to booking totals
     const getReservedRoomInfo = (roomId) => {
         for (const booking of activeBookings) {
             if (booking.rooms && booking.rooms.some((r) => Number(r.room_id) === Number(roomId))) {
                 const activeRooms = booking.rooms.filter((r) => r.status === "active");
+                // Find the specific room to get its male/female counts
+                const roomData = booking.rooms.find((r) => Number(r.room_id) === Number(roomId));
                 return {
                     customer_name: booking.customer_name,
                     phone_number: booking.phone_number,
                     check_in: booking.check_in,
-                    male_count: booking.male_count,
-                    female_count: booking.female_count,
+                    // ALWAYS use the per-room counts from roomData, never fall back to booking totals
+                    male_count: roomData?.male_count ?? 0,
+                    female_count: roomData?.female_count ?? 0,
                     registration_id: booking.registration_id,
                     room_count: activeRooms.length,
                     rooms: booking.rooms,
                     booking: booking,
                     other_rooms: booking.rooms.filter((r) => Number(r.room_id) !== Number(roomId)),
+                    // Store the room data for reference
+                    room_data: roomData,
                 };
             }
         }
@@ -523,6 +539,22 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // ============================================================
+    // CONTEXT MENU CLOSE HANDLER
+    // ============================================================
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (contextMenu && contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
+                setContextMenu(null);
+                setContextRoom(null);
+                setContextBooking(null);
+            }
+        }
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [contextMenu]);
+
     async function loadInitialData() {
         try {
             setLoading(true);
@@ -548,9 +580,6 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
             );
             setActiveBookings(enrichedBookings);
 
-            if (roomData.length === 0) {
-                showError("No rooms found in the system. Please add rooms first.");
-            }
         } catch (err) {
             console.error("Error loading data:", err);
             showError(`Failed to load data: ${String(err)}`);
@@ -604,7 +633,6 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         if (found) {
             setSelectedCustomer(found);
             showSuccess(`Customer found: ${found.name}`);
-            setRegistrationStep(2);
         } else {
             showError("Customer not found. Please register a new customer.");
             setSelectedCustomer(null);
@@ -812,7 +840,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                 roomIds: selectedRooms.map((id) => Number(id)),
             });
 
-            showSuccess(`Registration #${registrationId} created successfully.`);
+            showSuccess(`Registered successfully.`);
 
             setSelectedRooms([]);
             setSelectedCustomer(null);
@@ -893,8 +921,9 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
             setCustomerPopupData({
                 customer_name: booking.customer_name,
                 phone_number: booking.phone_number,
-                male_count: booking.male_count,
-                female_count: booking.female_count,
+                // Use the per-room counts from info (which came from roomData)
+                male_count: info.male_count,
+                female_count: info.female_count,
                 relation: booking.relation || "Self",
                 current_room: room.room_number,
                 other_rooms: otherRooms,
@@ -932,6 +961,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         }
     }
 
+    // FIXED: Use per-room counts from the room object directly
     function handleRightClick(e, room) {
         e.preventDefault();
         e.stopPropagation();
@@ -940,7 +970,15 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
             const info = getReservedRoomInfo(room.room_id);
             if (info) {
                 setContextRoom(room);
-                setContextBooking(info);
+                // Use the per-room counts from the room object
+                setContextBooking({
+                    ...info.booking,
+                    // Override with per-room counts from the room
+                    male_count: room.male_count || 0,
+                    female_count: room.female_count || 0,
+                    customer_name: info.customer_name,
+                    registration_id: info.registration_id,
+                });
 
                 const menuWidth = 220;
                 const menuHeight = 220;
@@ -1177,15 +1215,20 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
             {/* Context Menu */}
             {contextMenu && contextRoom && contextBooking && (
                 <div
+                    ref={contextMenuRef}
                     className="fixed z-50 min-w-[200px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
                     style={{ left: contextMenu.x, top: contextMenu.y }}
-                    onClick={(e) => e.stopPropagation()}
                 >
                     <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
                         <div className="font-bold text-gray-800">Room {contextRoom.room_number}</div>
                         <div className="flex items-center gap-1.5 text-sm text-gray-600">
                             <User className="w-3.5 h-3.5" />
                             {contextBooking.customer_name}
+                        </div>
+                        {/* Show guest counts from the room object directly */}
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                            <Users className="w-3 h-3" />
+                            {contextRoom.male_count || 0}M / {contextRoom.female_count || 0}F
                         </div>
                     </div>
                     <button
@@ -1380,6 +1423,10 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                             >
                                                 <Bed className="w-3 h-3" />
                                                 Room {room.room_number} ({room.status})
+                                                {/* Show guest counts for this room */}
+                                                <span className="text-xs text-indigo-500">
+                                                    {room.male_count || 0}M/{room.female_count || 0}F
+                                                </span>
                                             </span>
                                         ))}
                                     </div>
@@ -1400,7 +1447,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                 </div>
             )}
 
-            {/* Registration Form Modal */}
+            {/* Registration Form Modal - UPDATED with simplified 2-step flow */}
             {showRegistrationForm && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
@@ -1431,7 +1478,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                         </div>
 
                         <div className="p-6">
-                            {/* Step Indicator */}
+                            {/* Step Indicator - Simplified to 2 steps */}
                             <div className="mb-6 flex items-center gap-2">
                                 <div className={`flex items-center gap-2 ${registrationStep >= 1 ? "text-blue-600" : "text-gray-400"}`}>
                                     <span
@@ -1457,84 +1504,129 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                             </div>
 
                             <form onSubmit={handleCreateBooking}>
-                                {/* Step 1: Customer Search */}
+                                {/* Step 1: Customer Search with immediate details */}
                                 {registrationStep === 1 && (
-                                    <div className="mb-6 p-5 bg-gray-50 rounded-lg border border-gray-200">
-                                        <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                                            <User className="w-4 h-4" />
-                                            Customer Information
-                                        </h3>
+                                    <div className="mb-6">
+                                        <div className="p-5 bg-gray-50 rounded-lg border border-gray-200">
+                                            <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                                <User className="w-4 h-4" />
+                                                Customer Information
+                                            </h3>
 
-                                        {!selectedCustomer ? (
-                                            <div className="flex flex-col gap-3 sm:flex-row">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Enter phone number or document ID"
-                                                    value={customerSearch}
-                                                    onChange={(e) => setCustomerSearch(e.target.value)}
-                                                    onKeyPress={handleCustomerSearchKeyPress}
-                                                    className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={handleCustomerSearch}
-                                                    className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
-                                                >
-                                                    <Search className="w-4 h-4" />
-                                                    <span>Search</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={navigateToCustomers}
-                                                    className="inline-flex items-center justify-center gap-2 px-6 py-2.5 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-                                                >
-                                                    <UserPlus className="w-4 h-4" />
-                                                    <span>New Customer</span>
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="p-4 bg-white border-2 border-emerald-200 rounded-lg shadow-sm">
-                                                <div className="flex items-start justify-between">
-                                                    <div>
-                                                        <div className="text-lg font-semibold text-gray-800">{selectedCustomer.name}</div>
-                                                        <div className="mt-0.5 text-sm text-gray-600 flex items-center gap-1.5">
-                                                            <Phone className="w-3.5 h-3.5" />
-                                                            {selectedCustomer.phone_number}
-                                                        </div>
-                                                        {selectedCustomer.document_number && (
-                                                            <div className="mt-0.5 text-sm text-gray-600 flex items-center gap-1.5">
-                                                                <Fingerprint className="w-3.5 h-3.5" />
-                                                                {selectedCustomer.document_number}
-                                                            </div>
-                                                        )}
-                                                        {selectedCustomer.nationality && (
-                                                            <div className="mt-0.5 text-sm text-gray-600 flex items-center gap-1.5">
-                                                                <Globe className="w-3.5 h-3.5" />
-                                                                {selectedCustomer.nationality}
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                            {!selectedCustomer ? (
+                                                <div className="flex flex-col gap-3 sm:flex-row">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Enter phone number or document ID"
+                                                        value={customerSearch}
+                                                        onChange={(e) => setCustomerSearch(e.target.value)}
+                                                        onKeyPress={handleCustomerSearchKeyPress}
+                                                        className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    />
                                                     <button
                                                         type="button"
-                                                        onClick={() => {
-                                                            setSelectedCustomer(null);
-                                                            setCustomerSearch("");
-                                                            setRegistrationStep(1);
-                                                            clearMessages();
-                                                        }}
-                                                        className="text-sm font-medium text-rose-600 hover:text-rose-800"
+                                                        onClick={handleCustomerSearch}
+                                                        className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
                                                     >
-                                                        Change
+                                                        <Search className="w-4 h-4" />
+                                                        <span>Search</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={navigateToCustomers}
+                                                        className="inline-flex items-center justify-center gap-2 px-6 py-2.5 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                                                    >
+                                                        <UserPlus className="w-4 h-4" />
+                                                        <span>New Customer</span>
                                                     </button>
                                                 </div>
-                                            </div>
-                                        )}
+                                            ) : (
+                                                <div>
+                                                    {/* Customer Details Display */}
+                                                    <div className="p-4 bg-white border-2 border-emerald-200 rounded-lg shadow-sm">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex-1">
+                                                                <div className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                                                    {selectedCustomer.name}
+                                                                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-normal">
+                                                                        Found
+                                                                    </span>
+                                                                </div>
+                                                                
+                                                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                    <div className="flex items-center gap-2 text-sm">
+                                                                        <Phone className="w-3.5 h-3.5 text-gray-400" />
+                                                                        <span className="text-gray-600">{selectedCustomer.phone_number}</span>
+                                                                    </div>
+                                                                    {selectedCustomer.document_number && (
+                                                                        <div className="flex items-center gap-2 text-sm">
+                                                                            <Fingerprint className="w-3.5 h-3.5 text-gray-400" />
+                                                                            <span className="text-gray-600">{selectedCustomer.document_number}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {selectedCustomer.nationality && (
+                                                                        <div className="flex items-center gap-2 text-sm">
+                                                                            <Globe className="w-3.5 h-3.5 text-gray-400" />
+                                                                            <span className="text-gray-600">{selectedCustomer.nationality}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {selectedCustomer.email && (
+                                                                        <div className="flex items-center gap-2 text-sm">
+                                                                            <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                                                            </svg>
+                                                                            <span className="text-gray-600">{selectedCustomer.email}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {selectedCustomer.address && (
+                                                                        <div className="flex items-center gap-2 text-sm col-span-2">
+                                                                            <Home className="w-3.5 h-3.5 text-gray-400" />
+                                                                            <span className="text-gray-600">{selectedCustomer.address}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSelectedCustomer(null);
+                                                                    setCustomerSearch("");
+                                                                    clearMessages();
+                                                                }}
+                                                                className="text-sm font-medium text-rose-600 hover:text-rose-800 ml-2 flex-shrink-0"
+                                                            >
+                                                                Change
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 
                                 {/* Step 2: Registration Details */}
                                 {registrationStep === 2 && (
                                     <>
+                                        {/* Customer Summary (compact) */}
+                                        <div className="mb-4 p-3 bg-blue-50/80 border border-blue-200 rounded-lg">
+                                            <div className="flex items-center justify-between text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    <User className="w-4 h-4 text-blue-600" />
+                                                    <span className="font-semibold text-gray-800">{selectedCustomer?.name}</span>
+                                                    <span className="text-gray-400">|</span>
+                                                    <span className="text-gray-600">{selectedCustomer?.phone_number}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRegistrationStep(1)}
+                                                    className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                                                >
+                                                    Change Customer
+                                                </button>
+                                            </div>
+                                        </div>
+
                                         {/* Guest Details */}
                                         <div className="mb-6 grid gap-4 md:grid-cols-3">
                                             <div>
@@ -1598,6 +1690,9 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                                                         {room?.no_of_beds} beds •
                                                                         <span className="text-xs">₹</span>
                                                                         {room?.room_rate}/night
+                                                                    </div>
+                                                                    <div className="mt-1 text-sm text-gray-500">
+                                                                        Guests: {maleCount}M / {femaleCount}F
                                                                     </div>
                                                                     {features.length > 0 && (
                                                                         <div className="mt-1 flex flex-wrap gap-1">
@@ -1671,6 +1766,11 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                                                                 <span className="text-xs">₹</span>
                                                                                 {room.room_rate}/night
                                                                             </div>
+                                                                            {isSelected && (
+                                                                                <div className="mt-1 text-xs text-gray-500">
+                                                                                    Guests: {maleCount}M / {femaleCount}F (per room)
+                                                                                </div>
+                                                                            )}
                                                                             {features.length > 0 && (
                                                                                 <div className="mt-2 flex flex-wrap gap-1">
                                                                                     {features.slice(0, 4).map((feature, idx) => (
@@ -1691,21 +1791,38 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                     </>
                                 )}
 
-                                {/* Navigation Buttons */}
+                                {/* Navigation Buttons - Simplified for 2 steps */}
                                 <div className="flex gap-3">
-                                    {registrationStep === 1 ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                if (selectedCustomer) setRegistrationStep(2);
-                                                else showError("Please search and select a customer first.");
-                                            }}
-                                            disabled={!selectedCustomer}
-                                            className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <span>Next Step →</span>
-                                        </button>
-                                    ) : (
+                                    {registrationStep === 1 && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (selectedCustomer) setRegistrationStep(2);
+                                                    else showError("Please search and select a customer first.");
+                                                }}
+                                                disabled={!selectedCustomer}
+                                                className="inline-flex flex-1 items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <span>Next Step →</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowRegistrationForm(false);
+                                                    setSelectedCustomer(null);
+                                                    setSelectedRooms([]);
+                                                    setRegistrationMode(null);
+                                                    setRegistrationStep(1);
+                                                    clearMessages();
+                                                }}
+                                                className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </>
+                                    )}
+                                    {registrationStep === 2 && (
                                         <>
                                             <button
                                                 type="button"
@@ -1731,22 +1848,22 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                                     </>
                                                 )}
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowRegistrationForm(false);
+                                                    setSelectedCustomer(null);
+                                                    setSelectedRooms([]);
+                                                    setRegistrationMode(null);
+                                                    setRegistrationStep(1);
+                                                    clearMessages();
+                                                }}
+                                                className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
                                         </>
                                     )}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowRegistrationForm(false);
-                                            setSelectedCustomer(null);
-                                            setSelectedRooms([]);
-                                            setRegistrationMode(null);
-                                            setRegistrationStep(1);
-                                            clearMessages();
-                                        }}
-                                        className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
                                 </div>
                             </form>
                         </div>
@@ -1852,6 +1969,10 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                                         <span className="flex items-center gap-0.5">
                                                             <span className="text-xs">₹</span>
                                                             {roomData?.room_rate || 0}/night
+                                                        </span>
+                                                        <span>•</span>
+                                                        <span className="text-gray-400">
+                                                            {room.male_count || 0}M / {room.female_count || 0}F
                                                         </span>
                                                     </div>
                                                 </div>
