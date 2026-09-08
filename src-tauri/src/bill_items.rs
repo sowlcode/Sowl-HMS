@@ -732,3 +732,91 @@ pub fn delete_custom_bill_item(
 
     Ok(())
 }
+
+
+#[tauri::command]
+pub fn update_custom_bill_item_quantity(
+    app: AppHandle,
+    bill_id: i64,
+    quantity: f64,
+) -> Result<(), String> {
+    if bill_id <= 0 {
+        return Err("Invalid bill ID".to_string());
+    }
+
+    if quantity < 0.0 {
+        return Err("Quantity cannot be negative".to_string());
+    }
+
+    let conn = get_connection(&app).map_err(|e| e.to_string())?;
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+    // Check bill item exists and is custom
+    let item: Option<(i64, String, f64)> = tx
+        .query_row(
+            r#"
+            SELECT
+                registration_id,
+                item_type,
+                unit_price
+            FROM bill_items
+            WHERE bill_id = ?
+            "#,
+            params![bill_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| format!("Failed to find bill item: {}", e))?;
+
+    let (registration_id, item_type, unit_price) = match item {
+        Some(item) => item,
+        None => {
+            return Err(format!("Bill item {} does not exist", bill_id));
+        }
+    };
+
+    // Only custom items can be updated this way
+    if item_type != "custom" {
+        return Err("Only custom bill items can be updated directly".to_string());
+    }
+
+    // Check registration
+    verify_active_registration(&tx, registration_id)?;
+
+    if quantity == 0.0 {
+        // Delete the item if quantity is zero
+        tx.execute(
+            "DELETE FROM bill_items WHERE bill_id = ?",
+            params![bill_id],
+        )
+        .map_err(|e| format!("Failed to delete bill item: {}", e))?;
+    } else {
+        // Update quantity and total
+        let total = quantity * unit_price;
+        tx.execute(
+            r#"
+            UPDATE bill_items
+            SET
+                quantity = ?,
+                total = ?
+            WHERE bill_id = ?
+            "#,
+            params![quantity, total, bill_id],
+        )
+        .map_err(|e| format!("Failed to update bill item: {}", e))?;
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit update: {}", e))?;
+
+    Ok(())
+}

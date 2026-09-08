@@ -67,6 +67,7 @@ pub fn run() {
             bill_items::return_service_quantity,
             bill_items::get_registration_bill,
             bill_items::delete_custom_bill_item,
+            bill_items::update_custom_bill_item_quantity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
