@@ -70,10 +70,11 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
         r#"
         CREATE TABLE IF NOT EXISTS rooms (
             room_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            room_number TEXT NOT NULL UNIQUE,
+            room_number TEXT NOT NULL,
             room_rate DECIMAL(10,2) NOT NULL,
-            no_of_beds INTEGER NOT NULL,
+            no_of_beds INTEGER NOT NULL DEFAULT 0,
             features TEXT,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'available'
                 CHECK (status IN (
                     'available',
@@ -122,6 +123,26 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
     )?;
 
     // ============================================================
+    // FOOD & SERVICES
+    // ============================================================
+
+    conn.execute(
+        r#"
+    CREATE TABLE IF NOT EXISTS food_services (
+        service_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        service_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
+        stock INTEGER,
+        picture TEXT,
+        is_inventory BOOLEAN NOT NULL DEFAULT 0,
+        is_deleted BOOLEAN NOT NULL DEFAULT 0
+    );
+    "#,
+        [],
+    )?;
+
+    // ============================================================
     // REGISTRATION ROOMS
     // ============================================================
 
@@ -146,6 +167,15 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
             'cancelled'
         )),
 
+    -- Tracks the most recent 12:00 PM boundary for which a nightly
+    -- room charge has already been billed. Used by the automatic
+    -- daily room-charge catch-up routine.
+    last_charged_date TEXT,
+
+    -- Snapshot of the nightly rate at the moment the room was assigned.
+    -- Protects historical charges if rooms.room_rate changes later.
+    nightly_rate REAL,
+
     FOREIGN KEY (registration_id)
         REFERENCES registrations(registration_id)
         ON DELETE CASCADE
@@ -161,31 +191,11 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
     )?;
 
     // ============================================================
-    // FOOD & SERVICES
+    // BILL ITEMS
     // ============================================================
 
     conn.execute(
         r#"
-    CREATE TABLE IF NOT EXISTS food_services (
-        service_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        service_name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        service_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
-        stock INTEGER,
-        picture TEXT,
-        is_inventory BOOLEAN NOT NULL DEFAULT 0,
-        is_deleted BOOLEAN NOT NULL DEFAULT 0
-    );
-    "#,
-        [],
-    )?;
-
-    // ============================================================
-// BILL ITEMS
-// ============================================================
-
-conn.execute(
-    r#"
 CREATE TABLE IF NOT EXISTS bill_items (
     bill_id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -208,6 +218,8 @@ CREATE TABLE IF NOT EXISTS bill_items (
 
     added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
+    added_by TEXT NOT NULL DEFAULT 'system',
+
     FOREIGN KEY (registration_id)
         REFERENCES registrations(registration_id)
         ON DELETE CASCADE
@@ -219,8 +231,8 @@ CREATE TABLE IF NOT EXISTS bill_items (
         ON UPDATE CASCADE
 );
 "#,
-    [],
-)?;
+        [],
+    )?;
     // ============================================================
     // SEED ADMIN
     // ============================================================

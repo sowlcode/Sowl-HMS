@@ -11,11 +11,11 @@ use crate::database::database_path;
 
 fn get_connection(app: &AppHandle) -> Result<Connection, Box<dyn std::error::Error>> {
     let db_path: PathBuf = database_path(app)?;
-    
+
     let conn = Connection::open(db_path)?;
-    
+
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-    
+
     Ok(conn)
 }
 
@@ -54,12 +54,13 @@ pub struct BillItem {
     pub registration_id: i64,
     pub service_id: Option<i64>,
     pub item_type: String,
-    pub item_name: Option<String>,
+    pub item_name: String,
     pub quantity: f64,
     pub unit_price: f64,
     pub total: f64,
     pub added_at: String,
     pub is_inventory: bool,
+    pub added_by: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -114,6 +115,7 @@ fn verify_active_registration(
 pub fn add_service_to_registration(
     app: AppHandle,
     request: AddServiceRequest,
+    username: String,
 ) -> Result<i64, String> {
     if request.registration_id <= 0 {
         return Err("Invalid registration ID".to_string());
@@ -125,6 +127,10 @@ pub fn add_service_to_registration(
 
     if request.quantity <= 0.0 {
         return Err("Quantity must be greater than 0".to_string());
+    }
+
+    if username.trim().is_empty() {
+        return Err("Username is required".to_string());
     }
 
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
@@ -239,9 +245,11 @@ pub fn add_service_to_registration(
             item_name,
             quantity,
             unit_price,
-            total
+            total,
+            added_at,
+            added_by
         )
-        VALUES (?, ?, 'service', ?, ?, ?, ?)
+        VALUES (?, ?, 'service', ?, ?, ?, ?, datetime('now', 'localtime'), ?)
         "#,
         params![
             request.registration_id,
@@ -249,7 +257,8 @@ pub fn add_service_to_registration(
             service_name,
             request.quantity,
             service_charge,
-            total
+            total,
+            username.trim()
         ],
     )
     .map_err(|e| format!("Failed to add service to bill: {}", e))?;
@@ -274,6 +283,7 @@ pub fn add_service_to_registration(
 pub fn add_custom_bill_item(
     app: AppHandle,
     request: AddCustomItemRequest,
+    username: String,
 ) -> Result<i64, String> {
     if request.registration_id <= 0 {
         return Err("Invalid registration ID".to_string());
@@ -289,6 +299,10 @@ pub fn add_custom_bill_item(
 
     if request.unit_price < 0.0 {
         return Err("Unit price cannot be negative".to_string());
+    }
+
+    if username.trim().is_empty() {
+        return Err("Username is required".to_string());
     }
 
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
@@ -322,16 +336,19 @@ pub fn add_custom_bill_item(
             item_name,
             quantity,
             unit_price,
-            total
+            total,
+            added_at,
+            added_by
         )
-        VALUES (?, NULL, 'custom', ?, ?, ?, ?)
+        VALUES (?, NULL, 'custom', ?, ?, ?, ?, datetime('now', 'localtime'), ?)
         "#,
         params![
             request.registration_id,
             request.item_name.trim(),
             request.quantity,
             request.unit_price,
-            total
+            total,
+            username.trim()
         ],
     )
     .map_err(|e| format!("Failed to add custom bill item: {}", e))?;
@@ -352,6 +369,7 @@ pub fn add_custom_bill_item(
 pub fn return_service_quantity(
     app: AppHandle,
     request: ReturnServiceRequest,
+    username: String,
 ) -> Result<(), String> {
     if request.bill_id <= 0 {
         return Err("Invalid bill ID".to_string());
@@ -359,6 +377,10 @@ pub fn return_service_quantity(
 
     if request.quantity <= 0.0 {
         return Err("Return quantity must be greater than 0".to_string());
+    }
+
+    if username.trim().is_empty() {
+        return Err("Username is required".to_string());
     }
 
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
@@ -515,24 +537,65 @@ pub fn return_service_quantity(
     let new_total = new_quantity * unit_price;
 
     // --------------------------------------------------------
-    // UPDATE BILL ITEM
+    // UPDATE OR DELETE BILL ITEM
     // --------------------------------------------------------
+    //
+    // If the entire quantity is returned, remove the line item
+    // entirely rather than leaving a 0-quantity ghost.
 
-    tx.execute(
+    if new_quantity == 0.0 {
+        tx.execute(
+            r#"
+            DELETE FROM bill_items
+            WHERE bill_id = ?
+            "#,
+            params![request.bill_id],
+        )
+        .map_err(|e| format!("Failed to remove fully-returned item: {}", e))?;
+    } else {
+        tx.execute(
+            r#"
+            UPDATE bill_items
+            SET
+                quantity = ?,
+                total = ?
+            WHERE bill_id = ?
+            "#,
+            params![
+                new_quantity,
+                new_total,
+                request.bill_id
+            ],
+        )
+        .map_err(|e| format!("Failed to update bill item: {}", e))?;
+    }
+
+    // --------------------------------------------------------
+    // AUDIT LOG
+    // --------------------------------------------------------
+    // Best-effort: if the audit table doesn't exist, this fails
+    // silently so the return still succeeds.
+
+    let _ = tx.execute(
         r#"
-        UPDATE bill_items
-        SET
-            quantity = ?,
-            total = ?
-        WHERE bill_id = ?
+        INSERT INTO bill_audit_log (
+            bill_id,
+            registration_id,
+            action,
+            old_quantity,
+            new_quantity,
+            performed_by
+        )
+        VALUES (?, ?, 'return', ?, ?, ?)
         "#,
         params![
+            request.bill_id,
+            registration_id,
+            billed_quantity,
             new_quantity,
-            new_total,
-            request.bill_id
+            username.trim()
         ],
-    )
-    .map_err(|e| format!("Failed to update bill item: {}", e))?;
+    );
 
     // --------------------------------------------------------
     // COMMIT
@@ -558,6 +621,8 @@ pub fn get_registration_bill(
     }
 
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
+
+    crate::room_charges::catch_up_room_charges(&conn, Some(registration_id))?;
 
     // Check registration exists
     let exists: bool = conn
@@ -595,7 +660,8 @@ pub fn get_registration_bill(
                 b.unit_price,
                 b.total,
                 b.added_at,
-                COALESCE(fs.is_inventory, 0) as is_inventory
+                COALESCE(fs.is_inventory, 0) as is_inventory,
+                COALESCE(b.added_by, 'system') as added_by
             FROM bill_items b
             LEFT JOIN food_services fs
                 ON fs.service_id = b.service_id
@@ -618,6 +684,7 @@ pub fn get_registration_bill(
                 total: row.get(7)?,
                 added_at: row.get(8)?,
                 is_inventory: row.get(9)?,
+                added_by: row.get(10)?,
             })
         })
         .map_err(|e| format!("Failed to read bill items: {}", e))?;
@@ -650,9 +717,14 @@ pub fn get_registration_bill(
 pub fn delete_custom_bill_item(
     app: AppHandle,
     bill_id: i64,
+    username: String,
 ) -> Result<(), String> {
     if bill_id <= 0 {
         return Err("Invalid bill ID".to_string());
+    }
+
+    if username.trim().is_empty() {
+        return Err("Username is required".to_string());
     }
 
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
@@ -665,12 +737,13 @@ pub fn delete_custom_bill_item(
     // CHECK BILL ITEM
     // --------------------------------------------------------
 
-    let item: Option<(i64, String)> = tx
+    let item: Option<(i64, String, f64)> = tx
         .query_row(
             r#"
             SELECT
                 registration_id,
-                item_type
+                item_type,
+                quantity
             FROM bill_items
             WHERE bill_id = ?
             "#,
@@ -679,13 +752,14 @@ pub fn delete_custom_bill_item(
                 Ok((
                     row.get(0)?,
                     row.get(1)?,
+                    row.get(2)?,
                 ))
             },
         )
         .optional()
         .map_err(|e| format!("Failed to find bill item: {}", e))?;
 
-    let (registration_id, item_type) = match item {
+    let (registration_id, item_type, quantity) = match item {
         Some(item) => item,
 
         None => {
@@ -727,18 +801,41 @@ pub fn delete_custom_bill_item(
     )
     .map_err(|e| format!("Failed to delete bill item: {}", e))?;
 
+    // --------------------------------------------------------
+    // AUDIT LOG (best-effort)
+    // --------------------------------------------------------
+
+    let _ = tx.execute(
+        r#"
+        INSERT INTO bill_audit_log (
+            bill_id,
+            registration_id,
+            action,
+            old_quantity,
+            new_quantity,
+            performed_by
+        )
+        VALUES (?, ?, 'delete', ?, 0, ?)
+        "#,
+        params![bill_id, registration_id, quantity, username.trim()],
+    );
+
     tx.commit()
         .map_err(|e| format!("Failed to commit deletion: {}", e))?;
 
     Ok(())
 }
 
+// ============================================================
+// UPDATE CUSTOM BILL ITEM QUANTITY
+// ============================================================
 
 #[tauri::command]
 pub fn update_custom_bill_item_quantity(
     app: AppHandle,
     bill_id: i64,
     quantity: f64,
+    username: String,
 ) -> Result<(), String> {
     if bill_id <= 0 {
         return Err("Invalid bill ID".to_string());
@@ -748,6 +845,10 @@ pub fn update_custom_bill_item_quantity(
         return Err("Quantity cannot be negative".to_string());
     }
 
+    if username.trim().is_empty() {
+        return Err("Username is required".to_string());
+    }
+
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let tx = conn
@@ -755,13 +856,14 @@ pub fn update_custom_bill_item_quantity(
         .map_err(|e| format!("Failed to start transaction: {}", e))?;
 
     // Check bill item exists and is custom
-    let item: Option<(i64, String, f64)> = tx
+    let item: Option<(i64, String, f64, f64)> = tx
         .query_row(
             r#"
             SELECT
                 registration_id,
                 item_type,
-                unit_price
+                unit_price,
+                quantity
             FROM bill_items
             WHERE bill_id = ?
             "#,
@@ -771,13 +873,14 @@ pub fn update_custom_bill_item_quantity(
                     row.get(0)?,
                     row.get(1)?,
                     row.get(2)?,
+                    row.get(3)?,
                 ))
             },
         )
         .optional()
         .map_err(|e| format!("Failed to find bill item: {}", e))?;
 
-    let (registration_id, item_type, unit_price) = match item {
+    let (registration_id, item_type, unit_price, old_quantity) = match item {
         Some(item) => item,
         None => {
             return Err(format!("Bill item {} does not exist", bill_id));
@@ -814,6 +917,31 @@ pub fn update_custom_bill_item_quantity(
         )
         .map_err(|e| format!("Failed to update bill item: {}", e))?;
     }
+
+    // --------------------------------------------------------
+    // AUDIT LOG (best-effort)
+    // --------------------------------------------------------
+
+    let _ = tx.execute(
+        r#"
+        INSERT INTO bill_audit_log (
+            bill_id,
+            registration_id,
+            action,
+            old_quantity,
+            new_quantity,
+            performed_by
+        )
+        VALUES (?, ?, 'update', ?, ?, ?)
+        "#,
+        params![
+            bill_id,
+            registration_id,
+            old_quantity,
+            quantity,
+            username.trim()
+        ],
+    );
 
     tx.commit()
         .map_err(|e| format!("Failed to commit update: {}", e))?;

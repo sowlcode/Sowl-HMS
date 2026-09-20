@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
@@ -72,7 +72,6 @@ fn validate_document_fields(
     }
 }
 
-
 // ============================================================
 // ADD CUSTOMER
 // ============================================================
@@ -83,7 +82,10 @@ pub fn add_customer(
     customer: NewCustomer,
 ) -> Result<i64, String> {
     // Validate document fields
-    validate_document_fields(&customer.document_type, &customer.document_number)?;
+    validate_document_fields(
+        &customer.document_type,
+        &customer.document_number,
+    )?;
 
     let db_path = database_path(&app)
         .map_err(|e| e.to_string())?;
@@ -91,44 +93,121 @@ pub fn add_customer(
     let conn = Connection::open(db_path)
         .map_err(|e| e.to_string())?;
 
-    // Check for duplicate phone number (excluding soft-deleted)
-    let exists: bool = conn.query_row(
-        r#"
-        SELECT EXISTS(
-            SELECT 1 
-            FROM customers 
-            WHERE phone_number = ?1 
-            AND is_deleted = 0
-        )
-        "#,
-        params![customer.phone_number],
-        |row| row.get(0),
-    ).map_err(|e| e.to_string())?;
+    // --------------------------------------------------------
+    // 1. Check if an ACTIVE customer already has this phone
+    // --------------------------------------------------------
 
-    if exists {
-        return Err("A customer with this phone number already exists.".to_string());
-    }
-
-    // Check for duplicate document (type + number) if both are provided
-    if let (Some(doc_type), Some(doc_number)) = (&customer.document_type, &customer.document_number) {
-        let doc_exists: bool = conn.query_row(
+    let active_exists: bool = conn
+        .query_row(
             r#"
             SELECT EXISTS(
-                SELECT 1 
-                FROM customers 
-                WHERE document_type = ?1 
-                AND document_number = ?2 
+                SELECT 1
+                FROM customers
+                WHERE phone_number = ?1
                 AND is_deleted = 0
             )
             "#,
-            params![doc_type, doc_number],
+            params![customer.phone_number],
             |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
+
+    if active_exists {
+        return Err(
+            "A customer with this phone number already exists.".to_string()
+        );
+    }
+
+    // --------------------------------------------------------
+    // 2. Check for duplicate document among ACTIVE customers
+    // --------------------------------------------------------
+
+    if let (Some(doc_type), Some(doc_number)) =
+        (&customer.document_type, &customer.document_number)
+    {
+        let doc_exists: bool = conn
+            .query_row(
+                r#"
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM customers
+                    WHERE document_type = ?1
+                    AND document_number = ?2
+                    AND is_deleted = 0
+                )
+                "#,
+                params![doc_type, doc_number],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
 
         if doc_exists {
-            return Err("A customer with this document type and number already exists.".to_string());
+            return Err(
+                "A customer with this document type and number already exists."
+                    .to_string()
+            );
         }
     }
+
+    // --------------------------------------------------------
+    // 3. Look for a SOFT-DELETED customer with the same phone
+    // --------------------------------------------------------
+
+    let deleted_customer_id: Option<i64> = conn
+        .query_row(
+            r#"
+            SELECT customer_id
+            FROM customers
+            WHERE phone_number = ?1
+            AND is_deleted = 1
+            ORDER BY customer_id DESC
+            LIMIT 1
+            "#,
+            params![customer.phone_number],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    // --------------------------------------------------------
+    // 4. If deleted customer exists, REACTIVATE + UPDATE it
+    // --------------------------------------------------------
+
+    if let Some(customer_id) = deleted_customer_id {
+        conn.execute(
+            r#"
+            UPDATE customers
+            SET
+                name = ?,
+                address = ?,
+                phone_number = ?,
+                document_type = ?,
+                document_number = ?,
+                document_pic = ?,
+                nationality = ?,
+                is_deleted = 0
+            WHERE customer_id = ?
+            AND is_deleted = 1
+            "#,
+            params![
+                customer.name,
+                customer.address,
+                customer.phone_number,
+                customer.document_type,
+                customer.document_number,
+                customer.document_pic,
+                customer.nationality,
+                customer_id,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+        return Ok(customer_id);
+    }
+
+    // --------------------------------------------------------
+    // 5. No old customer found -> CREATE NEW CUSTOMER
+    // --------------------------------------------------------
 
     conn.execute(
         r#"
@@ -157,8 +236,6 @@ pub fn add_customer(
 
     Ok(conn.last_insert_rowid())
 }
-
-
 // ============================================================
 // UPDATE CUSTOMER
 // ============================================================
@@ -284,64 +361,6 @@ pub fn delete_customer(
 }
 
 
-// ============================================================
-// PERMANENT DELETE CUSTOMER (Hard Delete - Optional)
-// ============================================================
-
-#[tauri::command]
-pub fn permanently_delete_customer(
-    app: AppHandle,
-    customer_id: i64,
-) -> Result<(), String> {
-    let db_path = database_path(&app)
-        .map_err(|e| e.to_string())?;
-
-    let conn = Connection::open(db_path)
-        .map_err(|e| e.to_string())?;
-
-    let affected = conn
-        .execute(
-            "DELETE FROM customers WHERE customer_id = ? AND is_deleted = 1",
-            params![customer_id],
-        )
-        .map_err(|e| e.to_string())?;
-
-    if affected == 0 {
-        return Err("Customer not found or not soft-deleted.".to_string());
-    }
-
-    Ok(())
-}
-
-
-// ============================================================
-// RESTORE CUSTOMER
-// ============================================================
-
-#[tauri::command]
-pub fn restore_customer(
-    app: AppHandle,
-    customer_id: i64,
-) -> Result<(), String> {
-    let db_path = database_path(&app)
-        .map_err(|e| e.to_string())?;
-
-    let conn = Connection::open(db_path)
-        .map_err(|e| e.to_string())?;
-
-    let affected = conn
-        .execute(
-            "UPDATE customers SET is_deleted = 0 WHERE customer_id = ? AND is_deleted = 1",
-            params![customer_id],
-        )
-        .map_err(|e| e.to_string())?;
-
-    if affected == 0 {
-        return Err("Customer not found or not deleted.".to_string());
-    }
-
-    Ok(())
-}
 
 
 // ============================================================
@@ -404,66 +423,6 @@ pub fn get_customer(
     })
 }
 
-
-// ============================================================
-// GET DELETED CUSTOMER
-// ============================================================
-
-#[tauri::command]
-pub fn get_deleted_customer(
-    app: AppHandle,
-    customer_id: i64,
-) -> Result<Customer, String> {
-    let db_path = database_path(&app)
-        .map_err(|e| e.to_string())?;
-
-    let conn = Connection::open(db_path)
-        .map_err(|e| e.to_string())?;
-
-    conn.query_row(
-        r#"
-        SELECT
-            customer_id,
-            name,
-            address,
-            phone_number,
-            document_type,
-            document_number,
-            document_pic,
-            nationality,
-            created_at,
-            is_deleted
-        FROM customers
-        WHERE customer_id = ?
-        AND is_deleted = 1
-        "#,
-        params![customer_id],
-        |row| {
-            Ok(Customer {
-                customer_id: row.get(0)?,
-                name: row.get(1)?,
-                address: row.get(2)?,
-                phone_number: row.get(3)?,
-                document_type: row.get(4)?,
-                document_number: row.get(5)?,
-                document_pic: row.get(6)?,
-                nationality: row.get(7)?,
-                created_at: row.get(8)?,
-                is_deleted: row.get(9)?,
-            })
-        },
-    )
-    .map_err(|e| {
-        if matches!(
-            e,
-            rusqlite::Error::QueryReturnedNoRows
-        ) {
-            "Deleted customer not found.".to_string()
-        } else {
-            e.to_string()
-        }
-    })
-}
 
 
 // ============================================================
@@ -564,104 +523,6 @@ pub fn list_customers(
     })
 }
 
-
-// ============================================================
-// LIST DELETED CUSTOMERS
-// ============================================================
-
-#[tauri::command]
-pub fn list_deleted_customers(
-    app: AppHandle,
-    page: i64,
-) -> Result<CustomerPage, String> {
-    let db_path = database_path(&app)
-        .map_err(|e| e.to_string())?;
-
-    let conn = Connection::open(db_path)
-        .map_err(|e| e.to_string())?;
-
-    let limit: i64 = 100;
-
-    let page = if page < 1 {
-        1
-    } else {
-        page
-    };
-
-    let offset = (page - 1) * limit;
-
-    let total: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM customers WHERE is_deleted = 1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-
-    let total_pages = if total == 0 {
-        0
-    } else {
-        (total + limit - 1) / limit
-    };
-
-    let mut stmt = conn
-        .prepare(
-            r#"
-            SELECT
-                customer_id,
-                name,
-                address,
-                phone_number,
-                document_type,
-                document_number,
-                document_pic,
-                nationality,
-                created_at,
-                is_deleted
-            FROM customers
-            WHERE is_deleted = 1
-            ORDER BY customer_id DESC
-            LIMIT ? OFFSET ?
-            "#,
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(
-            params![limit, offset],
-            |row| {
-                Ok(Customer {
-                    customer_id: row.get(0)?,
-                    name: row.get(1)?,
-                    address: row.get(2)?,
-                    phone_number: row.get(3)?,
-                    document_type: row.get(4)?,
-                    document_number: row.get(5)?,
-                    document_pic: row.get(6)?,
-                    nationality: row.get(7)?,
-                    created_at: row.get(8)?,
-                    is_deleted: row.get(9)?,
-                })
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    let mut customers = Vec::new();
-
-    for customer in rows {
-        customers.push(
-            customer.map_err(|e| e.to_string())?
-        );
-    }
-
-    Ok(CustomerPage {
-        customers,
-        page,
-        limit,
-        total,
-        total_pages,
-    })
-}
 
 
 // ============================================================

@@ -1,18 +1,18 @@
 // BillingPage.jsx
+
 import { useEffect, useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+
 import {
   ArrowLeft,
   Plus,
   Minus,
   Trash2,
-  CreditCard,
   Receipt,
   User,
   Phone,
   Bed,
   Clock,
-  IndianRupee,
   Search,
   X,
   Check,
@@ -21,15 +21,16 @@ import {
   Utensils,
   ShoppingBag,
   AlertCircle,
-  RefreshCw,
   FileText,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Image,
   MoreHorizontal,
   Home,
-  Users,
+  Shirt,
+  Car,
+  FolderOpen,
+  UserCog,
+  Bot,
 } from "lucide-react";
 
 // ============================================================
@@ -39,8 +40,8 @@ import {
 const CATEGORY_ICONS = {
   Food: Utensils,
   Drinks: Coffee,
-  Laundry: () => <span className="text-sm">👕</span>,
-  Transport: () => <span className="text-sm">🚗</span>,
+  Laundry: Shirt,
+  Transport: Car,
   Other: MoreHorizontal,
 };
 
@@ -60,71 +61,44 @@ const CATEGORY_BADGE_COLORS = {
   Other: "bg-gray-100 text-gray-700 border-gray-200",
 };
 
-const CATEGORIES = ["all", "Food", "Drinks", "Laundry", "Transport", "Other"];
+const CATEGORIES = [
+  { value: "all", label: "All", icon: Package },
+  { value: "Food", label: "Food", icon: Utensils },
+  { value: "Drinks", label: "Drinks", icon: Coffee },
+  { value: "Laundry", label: "Laundry", icon: Shirt },
+  { value: "Transport", label: "Transport", icon: Car },
+  { value: "Other", label: "Other", icon: MoreHorizontal },
+];
 
 // ============================================================
-// CUSTOM DROPDOWN COMPONENT
+// ADDED-BY TAG
 // ============================================================
+//
+// Renders a small pill showing who added the bill item.
+// 'system' entries (auto nightly room charges) get a muted grey
+// look with a robot icon so they stand out from real users.
 
-function CustomDropdown({ options, value, onChange, placeholder, label, error }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef(null);
+function AddedByTag({ addedBy }) {
+  if (!addedBy) return null;
 
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const selectedOption = options.find((opt) => opt.value === value);
-  const displayLabel = selectedOption ? selectedOption.label : placeholder;
+  const isSystem = addedBy === "system";
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {label}
-          {error && <span className="text-red-500 ml-1">*</span>}
-        </label>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+        isSystem
+          ? "border-gray-200 bg-gray-100 text-gray-600"
+          : "border-indigo-200 bg-indigo-50 text-indigo-700"
+      }`}
+      title={isSystem ? "Auto-generated" : `Added by ${addedBy}`}
+    >
+      {isSystem ? (
+        <Bot className="h-3 w-3" />
+      ) : (
+        <UserCog className="h-3 w-3" />
       )}
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full px-4 py-2.5 bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center justify-between hover:border-blue-400 transition-colors ${
-          error ? "border-red-500" : "border-gray-300"
-        }`}
-      >
-        <span className={selectedOption ? "text-gray-900" : "text-gray-500"}>
-          {displayLabel}
-        </span>
-        <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
-      </button>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-      {isOpen && (
-        <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => {
-                onChange(option.value);
-                setIsOpen(false);
-              }}
-              className={`w-full px-4 py-2.5 text-left hover:bg-blue-50 transition-colors flex items-center justify-between ${
-                option.value === value ? "bg-blue-50 text-blue-600" : "text-gray-700"
-              }`}
-            >
-              <span>{option.label}</span>
-              {option.value === value && <Check className="w-4 h-4 text-blue-600" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      <span className="max-w-[120px] truncate">{isSystem ? "System" : addedBy}</span>
+    </span>
   );
 }
 
@@ -146,13 +120,14 @@ function ConfirmationDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-        <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 rounded-t-xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="rounded-t-xl bg-gradient-to-r from-red-600 to-red-700 px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-white/20 rounded-full">
-              <Icon className="w-5 h-5 text-white" />
+            <div className="rounded-full bg-white/20 p-1.5">
+              <Icon className="h-5 w-5 text-white" />
             </div>
+
             <div>
               <h2 className="text-lg font-semibold text-white">{title}</h2>
               <p className="text-sm text-red-100">This action cannot be undone</p>
@@ -161,32 +136,34 @@ function ConfirmationDialog({
         </div>
 
         <div className="p-6">
-          <p className="text-gray-600 mb-2">{message}</p>
-          <p className="text-sm text-red-600 bg-red-50 p-2 rounded-lg">
+          <p className="mb-2 text-gray-600">{message}</p>
+
+          <p className="rounded-lg bg-red-50 p-2 text-sm text-red-600">
             ⚠️ This action cannot be undone.
           </p>
 
-          <div className="flex items-center justify-end gap-3 mt-6">
+          <div className="mt-6 flex items-center justify-end gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               disabled={loading}
+              className="rounded-lg px-4 py-2 text-gray-600 transition-colors hover:bg-gray-100"
             >
               {cancelText}
             </button>
+
             <button
               onClick={onConfirm}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg hover:from-red-700 hover:to-red-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-4 py-2 text-white shadow-md transition-all hover:from-red-700 hover:to-red-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                   <span>Processing...</span>
                 </>
               ) : (
                 <>
-                  <Icon className="w-4 h-4" />
+                  <Icon className="h-4 w-4" />
                   <span>{confirmText}</span>
                 </>
               )}
@@ -199,10 +176,10 @@ function ConfirmationDialog({
 }
 
 // ============================================================
-// CONTEXT MENU COMPONENT
+// CONTEXT MENU
 // ============================================================
 
-function ContextMenu({ x, y, onClose, onDeduct, onDelete, isCustom, itemName }) {
+function ContextMenu({ x, y, onClose, onDeduct, onDelete, isCustom }) {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -211,20 +188,24 @@ function ContextMenu({ x, y, onClose, onDeduct, onDelete, isCustom, itemName }) 
         onClose();
       }
     }
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
 
-  // Position menu within viewport
   const menuStyle = {
-    position: 'fixed',
+    position: "fixed",
     left: Math.min(x, window.innerWidth - 220),
     top: Math.min(y, window.innerHeight - 150),
     zIndex: 1000,
   };
 
   return (
-    <div ref={menuRef} style={menuStyle} className="bg-white rounded-lg shadow-2xl border border-gray-200 py-1 min-w-[180px]">
+    <div
+      ref={menuRef}
+      style={menuStyle}
+      className="min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-2xl"
+    >
       {isCustom ? (
         <>
           <button
@@ -232,19 +213,20 @@ function ContextMenu({ x, y, onClose, onDeduct, onDelete, isCustom, itemName }) 
               onDeduct();
               onClose();
             }}
-            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-blue-50 transition-colors flex items-center gap-2"
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-blue-50"
           >
-            <Minus className="w-4 h-4 text-blue-500" />
+            <Minus className="h-4 w-4 text-blue-500" />
             <span>Deduct Quantity</span>
           </button>
+
           <button
             onClick={() => {
               onDelete();
               onClose();
             }}
-            className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2 border-t border-gray-100"
+            className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2.5 text-left text-sm text-red-600 transition-colors hover:bg-red-50"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="h-4 w-4" />
             <span>Remove Item</span>
           </button>
         </>
@@ -254,9 +236,9 @@ function ContextMenu({ x, y, onClose, onDeduct, onDelete, isCustom, itemName }) 
             onDeduct();
             onClose();
           }}
-          className="w-full px-4 py-2.5 text-left text-sm text-amber-600 hover:bg-amber-50 transition-colors flex items-center gap-2"
+          className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-amber-600 transition-colors hover:bg-amber-50"
         >
-          <Minus className="w-4 h-4 text-amber-500" />
+          <Minus className="h-4 w-4 text-amber-500" />
           <span>Return / Deduct</span>
         </button>
       )}
@@ -265,41 +247,252 @@ function ContextMenu({ x, y, onClose, onDeduct, onDelete, isCustom, itemName }) 
 }
 
 // ============================================================
-// MAIN BILLING PAGE COMPONENT
+// CUSTOM ITEM MODAL - BLUE THEME
+// ============================================================
+
+function CustomItemModal({ isOpen, onClose, onAdd, loading }) {
+  const [itemName, setItemName] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [unitPrice, setUnitPrice] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setItemName("");
+      setQuantity(1);
+      setUnitPrice("");
+      setError("");
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (!itemName.trim()) {
+      setError("Please enter an item name");
+      return;
+    }
+
+    const qty = Number(quantity);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      setError("Quantity must be a whole number greater than 0");
+      return;
+    }
+
+    const price = Number(unitPrice);
+    if (isNaN(price) || price <= 0) {
+      setError("Unit price must be greater than 0");
+      return;
+    }
+
+    onAdd({
+      name: itemName.trim(),
+      quantity: qty,
+      unitPrice: price,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between rounded-t-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
+              <ShoppingBag className="h-5 w-5" />
+              Exclusive Custom Item
+            </h2>
+            <p className="text-sm text-blue-100">Add something not in the service list</p>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-lg p-1.5 text-white transition-colors hover:bg-white/10"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Item Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
+              placeholder="Enter item name"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={loading}
+              autoFocus
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Quantity <span className="text-red-500">*</span>
+              </label>
+              <div className="flex items-center rounded-lg border border-gray-300 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                  className="rounded-l-lg p-2 transition-colors hover:bg-gray-100 disabled:opacity-50"
+                  disabled={loading}
+                >
+                  <Minus className="h-4 w-4 text-gray-600" />
+                </button>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={quantity}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setQuantity(Number.isNaN(val) || val < 1 ? 1 : val);
+                  }}
+                  className="w-full border-none bg-transparent text-center text-sm font-semibold outline-none"
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setQuantity((prev) => prev + 1)}
+                  className="rounded-r-lg p-2 transition-colors hover:bg-gray-100 disabled:opacity-50"
+                  disabled={loading}
+                >
+                  <Plus className="h-4 w-4 text-gray-600" />
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Unit Price (NPR) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={unitPrice}
+                onChange={(e) => setUnitPrice(e.target.value)}
+                placeholder="0.00"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-600">
+              ⚠️ {error}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 border-t border-gray-200 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-lg px-4 py-2 text-gray-600 transition-colors hover:bg-gray-100"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-white shadow-md transition-all duration-200 hover:from-blue-700 hover:to-indigo-700 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  <span>Adding...</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  <span>Add Item</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// MAIN BILLING PAGE
 // ============================================================
 
 export default function BillingPage({ registrationId, onBack, session }) {
-  // ============================================================
-  // STATE
-  // ============================================================
+  // ==========================================================
+  // SESSION USERNAME
+  // ==========================================================
+  // `session` is passed down from the parent. It should contain
+  // a `username` field — matches the value used across the app.
+
+  const username = session?.username || session?.user?.username || "unknown";
+
+  // ==========================================================
+  // DATA
+  // ==========================================================
 
   const [bill, setBill] = useState(null);
   const [registrationInfo, setRegistrationInfo] = useState(null);
+
   const [services, setServices] = useState([]);
   const [filteredServices, setFilteredServices] = useState([]);
+
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+
+  // ==========================================================
+  // TWO PAGE SYSTEM
+  // ==========================================================
+
+  const [activePage, setActivePage] = useState("bill");
+
+  // ==========================================================
+  // SERVICE FILTERS
+  // ==========================================================
+
+  const [serviceSearch, setServiceSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  // Add item states
-  const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [addItemType, setAddItemType] = useState("service");
-  const [selectedService, setSelectedService] = useState(null);
-  const [customItemName, setCustomItemName] = useState("");
-  const [itemQuantity, setItemQuantity] = useState(1);
-  const [itemUnitPrice, setItemUnitPrice] = useState(0);
-  const [serviceSearch, setServiceSearch] = useState("");
+  // ==========================================================
+  // MULTI ITEM STACK
+  // ==========================================================
 
-  // Return/Deduct item states
+  const [selectedItems, setSelectedItems] = useState({});
+  const selectionOrderRef = useRef(0);
+
+  // ==========================================================
+  // CUSTOM ITEM MODAL
+  // ==========================================================
+
+  const [customModalOpen, setCustomModalOpen] = useState(false);
+
+  // ==========================================================
+  // RETURN / DEDUCT
+  // ==========================================================
+
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [returnItem, setReturnItem] = useState(null);
   const [returnQuantity, setReturnQuantity] = useState(1);
 
-  // Context menu
+  // ==========================================================
+  // CONTEXT MENU
+  // ==========================================================
+
   const [contextMenu, setContextMenu] = useState(null);
 
-  // Confirmation dialog
+  // ==========================================================
+  // CONFIRMATION
+  // ==========================================================
+
   const [confirmationDialog, setConfirmationDialog] = useState({
     isOpen: false,
     title: "",
@@ -310,32 +503,34 @@ export default function BillingPage({ registrationId, onBack, session }) {
     icon: Trash2,
   });
 
-  // Messages
-  const [messages, setMessages] = useState([]);
+  // ==========================================================
+  // MESSAGES
+  // ==========================================================
 
-  // ============================================================
-  // MESSAGE FUNCTIONS
-  // ============================================================
+  const [messages, setMessages] = useState([]);
 
   const addMessage = (text, type = "info", duration = 5000) => {
     const id = Date.now() + Math.random();
-    setMessages((prev) => [...prev, { id, text, type, duration }]);
+
+    setMessages((prev) => [...prev, { id, text, type }]);
+
     if (duration > 0) {
-      setTimeout(() => removeMessage(id), duration);
+      setTimeout(() => {
+        setMessages((prev) => prev.filter((message) => message.id !== id));
+      }, duration);
     }
   };
 
-  const removeMessage = (id) => setMessages((prev) => prev.filter((msg) => msg.id !== id));
+  const removeMessage = (id) => {
+    setMessages((prev) => prev.filter((message) => message.id !== id));
+  };
 
-  const showSuccess = (text, duration = 5000) => addMessage(text, "success", duration);
-  const showError = (text, duration = 5000) => addMessage(text, "error", duration);
-  const showInfo = (text, duration = 5000) => addMessage(text, "info", duration);
+  const showSuccess = (text) => addMessage(text, "success");
+  const showError = (text) => addMessage(text, "error");
 
-  const clearMessages = () => setMessages([]);
-
-  // ============================================================
+  // ==========================================================
   // LOAD DATA
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     loadData();
@@ -345,7 +540,6 @@ export default function BillingPage({ registrationId, onBack, session }) {
   async function loadData() {
     try {
       setLoading(true);
-      clearMessages();
 
       const [billData, servicesData, regInfo] = await Promise.all([
         invoke("get_registration_bill", { registrationId: Number(registrationId) }),
@@ -365,288 +559,81 @@ export default function BillingPage({ registrationId, onBack, session }) {
     }
   }
 
+  // ==========================================================
+  // GET REGISTRATION INFO
+  // ==========================================================
+
   async function getRegistrationInfo() {
     try {
-      const booking = await invoke("get_booking", { registrationId: Number(registrationId) });
-      return booking;
+      return await invoke("get_booking", { registrationId: Number(registrationId) });
     } catch (err) {
       console.error("Error getting registration info:", err);
       return null;
     }
   }
 
+  // ==========================================================
+  // REFRESH BILL DATA
+  // ==========================================================
+
   async function refreshData() {
     try {
-      setRefreshing(true);
-      await loadData();
-    } finally {
-      setRefreshing(false);
+      const [billData, servicesData, regInfo] = await Promise.all([
+        invoke("get_registration_bill", { registrationId: Number(registrationId) }),
+        invoke("get_food_services"),
+        getRegistrationInfo(),
+      ]);
+
+      setBill(billData);
+      setServices(servicesData || []);
+      setFilteredServices(servicesData || []);
+      setRegistrationInfo(regInfo);
+    } catch (err) {
+      console.error("Refresh error:", err);
+      showError(String(err));
     }
   }
 
-  // ============================================================
+  // ==========================================================
   // SERVICE FILTERING
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     let filtered = services;
 
     if (selectedCategory !== "all") {
-      filtered = filtered.filter((s) => s.category === selectedCategory);
+      filtered = filtered.filter((service) => service.category === selectedCategory);
     }
 
     if (serviceSearch.trim()) {
       const query = serviceSearch.toLowerCase().trim();
-      filtered = filtered.filter((s) =>
-        s.service_name.toLowerCase().includes(query)
+      filtered = filtered.filter((service) =>
+        service.service_name?.toLowerCase().includes(query)
       );
     }
 
     setFilteredServices(filtered);
   }, [services, selectedCategory, serviceSearch]);
 
-  // ============================================================
-  // ADD SERVICE TO BILL
-  // ============================================================
-
-  async function handleAddService() {
-    if (!selectedService) {
-      showError("Please select a service");
-      return;
-    }
-
-    if (itemQuantity <= 0) {
-      showError("Quantity must be greater than 0");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      clearMessages();
-
-      await invoke("add_service_to_registration", {
-        request: {
-          registration_id: Number(registrationId),
-          service_id: Number(selectedService.service_id),
-          quantity: Number(itemQuantity),
-        },
-      });
-
-      showSuccess(`Added ${selectedService.service_name} to bill`);
-      setShowAddItemModal(false);
-      resetAddItemForm();
-      await refreshData();
-    } catch (err) {
-      console.error("Error adding service:", err);
-      showError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // ============================================================
-  // ADD CUSTOM ITEM TO BILL
-  // ============================================================
-
-  async function handleAddCustomItem() {
-    if (!customItemName.trim()) {
-      showError("Please enter an item name");
-      return;
-    }
-
-    if (itemQuantity <= 0) {
-      showError("Quantity must be greater than 0");
-      return;
-    }
-
-    if (itemUnitPrice < 0) {
-      showError("Unit price cannot be negative");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      clearMessages();
-
-      await invoke("add_custom_bill_item", {
-        request: {
-          registration_id: Number(registrationId),
-          item_name: customItemName.trim(),
-          quantity: Number(itemQuantity),
-          unit_price: Number(itemUnitPrice),
-        },
-      });
-
-      showSuccess(`Added ${customItemName} to bill`);
-      setShowAddItemModal(false);
-      resetAddItemForm();
-      await refreshData();
-    } catch (err) {
-      console.error("Error adding custom item:", err);
-      showError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // ============================================================
-  // RETURN/DEDUCT ITEM
-  // ============================================================
-
-  async function handleReturnItem() {
-    if (!returnItem) return;
-
-    if (returnQuantity <= 0) {
-      showError("Return quantity must be greater than 0");
-      return;
-    }
-
-    if (returnQuantity > returnItem.quantity) {
-      showError(`Cannot return more than ${returnItem.quantity} items`);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      clearMessages();
-
-      if (returnItem.item_type === "custom") {
-        // For custom items, deduct quantity
-        const newQuantity = returnItem.quantity - returnQuantity;
-        if (newQuantity === 0) {
-          // If quantity becomes 0, delete the item
-          await invoke("delete_custom_bill_item", {
-            billId: Number(returnItem.bill_id),
-          });
-          showSuccess(`Removed ${returnItem.item_name} from bill`);
-        } else {
-          // Update quantity
-          await invoke("update_custom_bill_item_quantity", {
-            billId: Number(returnItem.bill_id),
-            quantity: newQuantity,
-          });
-          showSuccess(`Deducted ${returnQuantity} ${returnItem.item_name}(s)`);
-        }
-      } else {
-        // For service items, use return_service_quantity
-        await invoke("return_service_quantity", {
-          request: {
-            bill_id: Number(returnItem.bill_id),
-            quantity: Number(returnQuantity),
-          },
-        });
-        showSuccess(`Returned ${returnQuantity} ${returnItem.item_name || "item"}(s)`);
-      }
-
-      setShowReturnModal(false);
-      setReturnItem(null);
-      setReturnQuantity(1);
-      await refreshData();
-    } catch (err) {
-      console.error("Error returning item:", err);
-      showError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // ============================================================
-  // DELETE CUSTOM ITEM
-  // ============================================================
-
-  async function handleDeleteCustomItem(item) {
-    setConfirmationDialog({
-      isOpen: true,
-      title: "Delete Item",
-      message: `Are you sure you want to delete "${item.item_name}" from the bill?`,
-      confirmText: "Delete",
-      icon: Trash2,
-      onConfirm: async () => {
-        setConfirmationDialog((prev) => ({ ...prev, loading: true }));
-        try {
-          await invoke("delete_custom_bill_item", {
-            billId: Number(item.bill_id),
-          });
-
-          showSuccess(`Deleted ${item.item_name} from bill`);
-          await refreshData();
-          closeConfirmationDialog();
-        } catch (err) {
-          console.error("Error deleting item:", err);
-          showError(String(err));
-          setConfirmationDialog((prev) => ({ ...prev, loading: false }));
-        }
-      },
-    });
-  }
-
-  function closeConfirmationDialog() {
-    setConfirmationDialog({
-      isOpen: false,
-      title: "",
-      message: "",
-      confirmText: "Confirm",
-      onConfirm: null,
-      loading: false,
-      icon: Trash2,
-    });
-  }
-
-  // ============================================================
-  // HANDLE DEDUCT (Context Menu)
-  // ============================================================
-
-  function handleDeductItem(item) {
-    setReturnItem(item);
-    setReturnQuantity(1);
-    setShowReturnModal(true);
-    setContextMenu(null);
-  }
-
-  // ============================================================
-  // HANDLE RIGHT CLICK
-  // ============================================================
-
-  const handleRightClick = useCallback((e, item) => {
-    e.preventDefault();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      item: item,
-      isCustom: item.item_type === "custom",
-      itemName: item.item_name || `Service #${item.service_id}`,
-    });
-  }, []);
-
-  // ============================================================
-  // FORM HELPERS
-  // ============================================================
-
-  function resetAddItemForm() {
-    setAddItemType("service");
-    setSelectedService(null);
-    setCustomItemName("");
-    setItemQuantity(1);
-    setItemUnitPrice(0);
-    setServiceSearch("");
-    setSelectedCategory("all");
-  }
-
-  function openAddItemModal() {
-    resetAddItemForm();
-    setShowAddItemModal(true);
-  }
+  // ==========================================================
+  // FORMAT CURRENCY - NPR
+  // ==========================================================
 
   function formatCurrency(amount) {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
-      currency: "INR",
+      currency: "NPR",
       minimumFractionDigits: 2,
-    }).format(amount);
+    }).format(Number(amount || 0));
   }
+
+  // ==========================================================
+  // FORMAT DATE
+  // ==========================================================
 
   function formatDate(dateString) {
     if (!dateString) return "-";
+
     try {
       const date = new Date(dateString);
       return date.toLocaleDateString("en-US", {
@@ -661,759 +648,1466 @@ export default function BillingPage({ registrationId, onBack, session }) {
     }
   }
 
-  // Quantity controls
-  const increaseQuantity = () => setItemQuantity(prev => Number((prev + 0.5).toFixed(1)));
-  const decreaseQuantity = () => setItemQuantity(prev => Math.max(0.5, Number((prev - 0.5).toFixed(1))));
+  // ==========================================================
+  // MULTI ITEM SELECTION
+  // ==========================================================
 
-  // ============================================================
-  // RENDER
-  // ============================================================
+  function toggleService(service) {
+    const serviceId = service.service_id;
+
+    setSelectedItems((prev) => {
+      const next = { ...prev };
+
+      if (next[serviceId]) {
+        delete next[serviceId];
+      } else {
+        selectionOrderRef.current += 1;
+        next[serviceId] = { service, quantity: 1, order: selectionOrderRef.current };
+      }
+
+      return next;
+    });
+  }
+
+  // ==========================================================
+  // INCREASE SELECTED SERVICE
+  // ==========================================================
+
+  function increaseSelectedQuantity(serviceId, e) {
+    e.stopPropagation();
+    setSelectedItems((prev) => {
+      const item = prev[serviceId];
+      if (!item) return prev;
+
+      const service = item.service;
+      const current = Number(item.quantity) || 1;
+      const stock = Number(service.stock ?? 0);
+
+      if (service.is_inventory && current >= stock) {
+        showError(
+          `Only ${stock} unit${stock === 1 ? "" : "s"} available for ${service.service_name}`
+        );
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [serviceId]: { ...item, quantity: current + 1 },
+      };
+    });
+  }
+
+  // ==========================================================
+  // DECREASE SELECTED SERVICE
+  // ==========================================================
+
+  function decreaseSelectedQuantity(serviceId, e) {
+    e.stopPropagation();
+    setSelectedItems((prev) => {
+      const item = prev[serviceId];
+      if (!item) return prev;
+
+      const current = Number(item.quantity) || 1;
+
+      if (current <= 1) {
+        const next = { ...prev };
+        delete next[serviceId];
+        return next;
+      }
+
+      return {
+        ...prev,
+        [serviceId]: { ...item, quantity: current - 1 },
+      };
+    });
+  }
+
+  // ==========================================================
+  // SET SELECTED QUANTITY MANUALLY
+  // ==========================================================
+
+  function setSelectedQuantity(service, value, e) {
+    e.stopPropagation();
+    let quantity = parseInt(value, 10);
+
+    if (Number.isNaN(quantity) || quantity < 1) {
+      quantity = 1;
+    }
+
+    if (service.is_inventory) {
+      const stock = Number(service.stock ?? 0);
+      if (quantity > stock) {
+        quantity = stock;
+      }
+    }
+
+    setSelectedItems((prev) => ({
+      ...prev,
+      [service.service_id]: {
+        ...prev[service.service_id],
+        service,
+        quantity,
+      },
+    }));
+  }
+
+  // ==========================================================
+  // SELECTED ITEMS ARRAY
+  // ==========================================================
+
+  const selectedItemsArray = Object.values(selectedItems);
+  const selectedItemTypes = selectedItemsArray.length;
+
+  // Newest selection first — used only for the sidebar list order
+  const selectedItemsArraySorted = [...selectedItemsArray].sort(
+    (a, b) => (b.order || 0) - (a.order || 0)
+  );
+
+  const selectedTotalQuantity = selectedItemsArray.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0
+  );
+
+  const selectedItemsTotal = selectedItemsArray.reduce(
+    (sum, item) =>
+      sum + Number(item.quantity || 0) * Number(item.service?.service_charge || 0),
+    0
+  );
+
+  // ==========================================================
+  // ADD ALL SELECTED SERVICES
+  // ==========================================================
+
+  async function handleAddSelectedItems() {
+    if (selectedItemsArray.length === 0) {
+      showError("Please select at least one item");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      let addedCount = 0;
+
+      for (const item of selectedItemsArray) {
+        const service = item.service;
+        const quantity = Number(item.quantity);
+
+        if (quantity <= 0 || !Number.isInteger(quantity)) {
+          throw new Error(`Invalid quantity for ${service.service_name}`);
+        }
+
+        if (service.is_inventory) {
+          const stock = Number(service.stock ?? 0);
+          if (quantity > stock) {
+            throw new Error(
+              `Not enough stock for ${service.service_name}. Available: ${stock}`
+            );
+          }
+        }
+
+        await invoke("add_service_to_registration", {
+          request: {
+            registration_id: Number(registrationId),
+            service_id: Number(service.service_id),
+            quantity: quantity,
+          },
+          username, // <-- ADDED: tracks who added the service
+        });
+
+        addedCount++;
+      }
+
+      showSuccess(`Added ${addedCount} item${addedCount === 1 ? "" : "s"} to the bill`);
+
+      setSelectedItems({});
+      await refreshData();
+      setActivePage("bill");
+    } catch (err) {
+      console.error("Error adding selected items:", err);
+      showError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ==========================================================
+  // CLEAR SELECTION
+  // ==========================================================
+
+  function clearSelectedItems() {
+    setSelectedItems({});
+  }
+
+  // ==========================================================
+  // ADD CUSTOM ITEM
+  // ==========================================================
+
+  async function handleAddCustomItem({ name, quantity, unitPrice }) {
+    try {
+      setLoading(true);
+
+      await invoke("add_custom_bill_item", {
+        request: {
+          registration_id: Number(registrationId),
+          item_name: name,
+          quantity: quantity,
+          unit_price: unitPrice,
+        },
+        username, // <-- ADDED: tracks who added the custom item
+      });
+
+      showSuccess(`Added ${name} to bill`);
+      setCustomModalOpen(false);
+      await refreshData();
+      setActivePage("bill");
+    } catch (err) {
+      console.error("Error adding custom item:", err);
+      showError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ==========================================================
+  // HANDLE DEDUCT
+  // ==========================================================
+
+  function handleDeductItem(item) {
+    setReturnItem(item);
+    setReturnQuantity(1);
+    setShowReturnModal(true);
+    setContextMenu(null);
+  }
+
+  // ==========================================================
+  // HANDLE RIGHT CLICK
+  // ==========================================================
+
+  const handleRightClick = useCallback((e, item) => {
+    e.preventDefault();
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      item,
+      isCustom: item.item_type === "custom",
+    });
+  }, []);
+
+  // ==========================================================
+  // RETURN / DEDUCT
+  // ==========================================================
+
+  async function handleReturnItem() {
+    if (!returnItem) return;
+
+    const quantity = Number(returnQuantity);
+
+    if (quantity <= 0 || !Number.isInteger(quantity)) {
+      showError("Return quantity must be a whole number");
+      return;
+    }
+
+    if (quantity > Number(returnItem.quantity)) {
+      showError(`Cannot return more than ${returnItem.quantity} items`);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      if (returnItem.item_type === "custom") {
+        const newQuantity = Number(returnItem.quantity) - quantity;
+
+        if (newQuantity === 0) {
+          await invoke("delete_custom_bill_item", {
+            billId: Number(returnItem.bill_id),
+            username, // <-- ADDED: tracks who deleted
+          });
+
+          showSuccess(`Removed ${returnItem.item_name} from bill`);
+        } else {
+          await invoke("update_custom_bill_item_quantity", {
+            billId: Number(returnItem.bill_id),
+            quantity: newQuantity,
+            username, // <-- ADDED: tracks who updated
+          });
+
+          showSuccess(`Deducted ${quantity} ${returnItem.item_name}`);
+        }
+      } else {
+        await invoke("return_service_quantity", {
+          request: {
+            bill_id: Number(returnItem.bill_id),
+            quantity: quantity,
+          },
+          username, // <-- ADDED: tracks who returned
+        });
+
+        showSuccess(`Returned ${quantity} ${returnItem.item_name || "item"}`);
+      }
+
+      setShowReturnModal(false);
+      setReturnItem(null);
+      setReturnQuantity(1);
+
+      await refreshData();
+    } catch (err) {
+      console.error("Error returning item:", err);
+      showError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ==========================================================
+  // DELETE CUSTOM ITEM
+  // ==========================================================
+
+  async function handleDeleteCustomItem(item) {
+    setConfirmationDialog({
+      isOpen: true,
+      title: "Delete Item",
+      message: `Are you sure you want to delete "${item.item_name}" from the bill?`,
+      confirmText: "Delete",
+      icon: Trash2,
+
+      onConfirm: async () => {
+        setConfirmationDialog((prev) => ({ ...prev, loading: true }));
+
+        try {
+          await invoke("delete_custom_bill_item", {
+            billId: Number(item.bill_id),
+            username, // <-- ADDED
+          });
+
+          showSuccess(`Deleted ${item.item_name} from bill`);
+          await refreshData();
+          closeConfirmationDialog();
+        } catch (err) {
+          console.error("Error deleting item:", err);
+          showError(String(err));
+
+          setConfirmationDialog((prev) => ({ ...prev, loading: false }));
+        }
+      },
+    });
+  }
+
+  // ==========================================================
+  // CLOSE CONFIRMATION
+  // ==========================================================
+
+  function closeConfirmationDialog() {
+    setConfirmationDialog({
+      isOpen: false,
+      title: "",
+      message: "",
+      confirmText: "Confirm",
+      onConfirm: null,
+      loading: false,
+      icon: Trash2,
+    });
+  }
+
+  // ==========================================================
+  // LOADING SCREEN
+  // ==========================================================
 
   if (loading && !bill) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex min-h-[400px] items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600" />
           <p className="mt-4 text-gray-600">Loading billing data...</p>
         </div>
       </div>
     );
   }
 
+  // ==========================================================
+  // CATEGORY STATS
+  // ==========================================================
+
+  const categoryStats = services.reduce((acc, s) => {
+    acc[s.category] = (acc[s.category] || 0) + 1;
+    return acc;
+  }, {});
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
+
   return (
-    <div className="p-6 max-w-7xl mx-auto relative">
-      {/* Messages */}
-      {messages.length > 0 && (
-        <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md w-full">
-          {messages.map(({ id, text, type }) => (
-            <div
-              key={id}
-              className={`
-                p-4 rounded-lg shadow-lg border flex items-start gap-3 animate-slide-in
-                ${type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : ''}
-                ${type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : ''}
-                ${type === 'info' ? 'bg-blue-50 border-blue-200 text-blue-700' : ''}
-              `}
-            >
-              <div className="flex-1">
-                <p className="text-sm">{text}</p>
-              </div>
-              <button
-                onClick={() => removeMessage(id)}
-                className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+    <>
+      {/* ======================================================
+          ANIMATION
+      ====================================================== */}
+
+      <style>{`
+        @keyframes pageFade {
+          0% { opacity: 0; transform: translateY(8px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .page-fade {
+          animation: pageFade 250ms ease-out;
+        }
+
+        .service-card {
+          transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+        }
+
+        .service-card:hover {
+          transform: translateY(-2px);
+        }
+
+        .service-card:active {
+          transform: scale(.985);
+        }
+
+        .selected-items-sidebar {
+          position: sticky;
+          top: 1.5rem;
+          max-height: calc(100vh - 3rem);
+          overflow-y: auto;
+        }
+
+        .selected-items-sidebar::-webkit-scrollbar {
+          width: 4px;
+        }
+
+        .selected-items-sidebar::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 10px;
+        }
+
+        .selected-items-sidebar::-webkit-scrollbar-thumb {
+          background: #c1c1c1;
+          border-radius: 10px;
+        }
+
+        .selected-items-sidebar::-webkit-scrollbar-thumb:hover {
+          background: #a1a1a1;
+        }
+
+        .service-image-container {
+          aspect-ratio: 1 / 1;
+          padding: 6px;
+        }
+
+        .service-image-container img {
+          border-radius: 10px;
+          border: 2px solid #e5e7eb;
+        }
+
+        .service-image-container .fallback-image {
+          border-radius: 10px;
+          border: 2px solid #e5e7eb;
+        }
+
+        .quantity-controls button {
+          position: relative;
+          z-index: 10;
+          pointer-events: auto;
+        }
+
+        .quantity-controls input {
+          pointer-events: auto;
+        }
+      `}</style>
+
+      {/* ======================================================
+          MAIN CONTAINER
+      ====================================================== */}
+
+      <div className="relative mx-auto max-w-7xl p-6">
+        {/* ====================================================
+            MESSAGES
+        ==================================================== */}
+
+        {messages.length > 0 && (
+          <div className="fixed right-4 top-4 z-[200] w-full max-w-md space-y-2">
+            {messages.map(({ id, text, type }) => (
+              <div
+                key={id}
+                className={`flex items-start gap-3 rounded-lg border p-4 shadow-lg ${
+                  type === "success"
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : type === "error"
+                    ? "border-red-200 bg-red-50 text-red-700"
+                    : "border-blue-200 bg-blue-50 text-blue-700"
+                }`}
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Confirmation Dialog */}
-      <ConfirmationDialog
-        isOpen={confirmationDialog.isOpen}
-        onClose={closeConfirmationDialog}
-        onConfirm={confirmationDialog.onConfirm}
-        title={confirmationDialog.title}
-        message={confirmationDialog.message}
-        confirmText={confirmationDialog.confirmText}
-        loading={confirmationDialog.loading}
-        icon={confirmationDialog.icon}
-      />
-
-      {/* Context Menu */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          onDeduct={() => handleDeductItem(contextMenu.item)}
-          onDelete={() => {
-            if (contextMenu.isCustom) {
-              handleDeleteCustomItem(contextMenu.item);
-            }
-          }}
-          isCustom={contextMenu.isCustom}
-          itemName={contextMenu.itemName}
-        />
-      )}
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-6 h-6 text-gray-600" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <Receipt className="w-6 h-6 text-blue-600" />
-              Billing
-            </h1>
-            <p className="text-sm text-gray-500">
-              Registration #{registrationId} • {registrationInfo?.customer_name || "Loading..."}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={refreshData}
-            disabled={refreshing}
-            className="inline-flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Registration Info Cards - Show all room numbers */}
-      {registrationInfo && (
-        <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-blue-50 p-2">
-                <User className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="text-xs font-medium text-gray-500">Customer</div>
-                <div className="text-sm font-semibold text-gray-800">{registrationInfo.customer_name}</div>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-green-50 p-2">
-                <Phone className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <div className="text-xs font-medium text-gray-500">Phone</div>
-                <div className="text-sm font-semibold text-gray-800">{registrationInfo.phone_number}</div>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-purple-50 p-2">
-                <Home className="w-5 h-5 text-purple-600" />
-              </div>
-              <div>
-                <div className="text-xs font-medium text-gray-500">Rooms</div>
-                <div className="text-sm font-semibold text-gray-800">
-                  {registrationInfo.rooms?.map((room, idx) => (
-                    <span key={idx} className="inline-block mr-1">
-                      {room.room_number}
-                      {idx < registrationInfo.rooms.length - 1 && ", "}
-                    </span>
-                  )) || "No rooms"}
+                <div className="flex-1">
+                  <p className="text-sm">{text}</p>
                 </div>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-amber-50 p-2">
-                <Clock className="w-5 h-5 text-amber-600" />
-              </div>
-              <div>
-                <div className="text-xs font-medium text-gray-500">Check-in</div>
-                <div className="text-sm font-semibold text-gray-800">
-                  {formatDate(registrationInfo.check_in)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Bill Items Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-600" />
-              Bill Items
-              <span className="ml-2 text-sm font-normal text-gray-500">
-                (Right-click for options)
-              </span>
-            </h2>
-            <button
-              onClick={openAddItemModal}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Item</span>
-            </button>
-          </div>
-
-          {bill?.items?.length === 0 ? (
-            <div className="py-12 text-center text-gray-500">
-              <Receipt className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-              <p>No items added to this bill yet.</p>
-              <p className="text-sm">Click "Add Item" to start billing.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Price</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {bill?.items?.map((item) => {
-                    const isCustom = item.item_type === "custom";
-                    return (
-                      <tr
-                        key={item.bill_id}
-                        className={`hover:bg-gray-50 transition-colors cursor-context-menu ${isCustom ? 'bg-amber-50/30' : ''}`}
-                        onContextMenu={(e) => handleRightClick(e, item)}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {isCustom ? (
-                              <ShoppingBag className="w-4 h-4 text-amber-500" />
-                            ) : item.is_inventory ? (
-                              <Package className="w-4 h-4 text-blue-500" />
-                            ) : (
-                              <Coffee className="w-4 h-4 text-purple-500" />
-                            )}
-                            <span className="font-medium text-gray-800">
-                              {item.item_name || `Service #${item.service_id}`}
-                            </span>
-                            {isCustom && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
-                                Exclusive
-                              </span>
-                            )}
-                            {item.item_type === "service" && item.is_inventory && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                                Inventory
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            Added: {formatDate(item.added_at)}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 capitalize">
-                          {isCustom ? "Custom" : "Service"}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-medium text-gray-800">
-                          {item.quantity}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm text-gray-600">
-                          {formatCurrency(item.unit_price)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800">
-                          {formatCurrency(item.total)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-gray-200">
-                    <td colSpan="4" className="px-4 py-3 text-right font-semibold text-gray-700">
-                      Subtotal
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-800">
-                      {formatCurrency(bill?.subtotal || 0)}
-                    </td>
-                  </tr>
-                  <tr className="bg-blue-50/50">
-                    <td colSpan="4" className="px-4 py-3 text-right font-bold text-gray-800 text-lg">
-                      Total
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-blue-600 text-lg">
-                      {formatCurrency(bill?.total || 0)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Add Item Modal */}
-      {showAddItemModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 rounded-t-xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Add Item to Bill</h2>
-                  <p className="text-sm text-blue-100">Add a service or custom item</p>
-                </div>
                 <button
-                  onClick={() => {
-                    setShowAddItemModal(false);
-                    resetAddItemForm();
-                  }}
-                  className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                  onClick={() => removeMessage(id)}
+                  className="text-gray-400 transition hover:text-gray-600"
                 >
-                  <X className="w-5 h-5 text-white" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
-            </div>
+            ))}
+          </div>
+        )}
 
-            <div className="p-6">
-              {/* Item Type Selection */}
-              <div className="mb-6">
-                <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddItemType("service");
-                      setSelectedService(null);
-                    }}
-                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      addItemType === "service"
-                        ? "bg-white text-blue-600 shadow-sm"
-                        : "text-gray-600 hover:text-gray-800"
-                    }`}
-                  >
-                    Service Item
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddItemType("custom");
-                      setSelectedService(null);
-                    }}
-                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      addItemType === "custom"
-                        ? "bg-white text-amber-600 shadow-sm"
-                        : "text-gray-600 hover:text-gray-800"
-                    }`}
-                  >
-                    <span className="flex items-center justify-center gap-1">
-                      <ShoppingBag className="w-4 h-4" />
-                      Exclusive Item
-                    </span>
-                  </button>
-                </div>
-              </div>
+        {/* ====================================================
+            CONFIRMATION
+        ==================================================== */}
 
-              {addItemType === "service" ? (
-                // Service Item Form
-                <div className="space-y-4">
-                  {/* Service Search */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Search Service
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Search by name..."
-                        value={serviceSearch}
-                        onChange={(e) => setServiceSearch(e.target.value)}
-                        className="w-full px-4 py-2.5 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    </div>
-                  </div>
+        <ConfirmationDialog
+          isOpen={confirmationDialog.isOpen}
+          onClose={closeConfirmationDialog}
+          onConfirm={confirmationDialog.onConfirm}
+          title={confirmationDialog.title}
+          message={confirmationDialog.message}
+          confirmText={confirmationDialog.confirmText}
+          loading={confirmationDialog.loading}
+          icon={confirmationDialog.icon}
+        />
 
-                  {/* Category Filter */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Category
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {CATEGORIES.map((cat) => (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => setSelectedCategory(cat)}
-                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                            selectedCategory === cat
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          }`}
-                        >
-                          {cat === "all" ? "All" : cat}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+        {/* ====================================================
+            CUSTOM ITEM MODAL - BLUE THEME
+        ==================================================== */}
 
-                  {/* Service List with Images */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Select Service
-                    </label>
-                    <div className="border border-gray-300 rounded-lg max-h-64 overflow-y-auto divide-y divide-gray-100">
-                      {filteredServices.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500 text-sm">
-                          No services found
-                        </div>
-                      ) : (
-                        filteredServices.map((service) => {
-                          const Icon = CATEGORY_ICONS[service.category] || MoreHorizontal;
-                          const colorClass = CATEGORY_COLORS[service.category] || "from-gray-500 to-gray-600";
-                          const badgeColor = CATEGORY_BADGE_COLORS[service.category] || "bg-gray-100 text-gray-700 border-gray-200";
-                          const isSelected = selectedService?.service_id === service.service_id;
-                          
-                          return (
-                            <button
-                              key={service.service_id}
-                              type="button"
-                              onClick={() => setSelectedService(service)}
-                              className={`w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors flex items-center gap-4 ${
-                                isSelected ? "bg-blue-50 border-l-4 border-blue-600" : ""
-                              }`}
-                            >
-                              {/* Image Thumbnail */}
-                              <div className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 border-gray-200 bg-gray-50">
-                                {service.picture ? (
-                                  <img
-                                    src={service.picture}
-                                    alt={service.service_name}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      e.target.style.display = "none";
-                                      e.target.parentElement.innerHTML = `
-                                        <div class="flex items-center justify-center h-full bg-gray-50">
-                                          <Image class="w-6 h-6 text-gray-300" />
-                                        </div>
-                                      `;
-                                    }}
-                                  />
-                                ) : (
-                                  <div className="flex items-center justify-center h-full bg-gray-50">
-                                    <Image className="w-6 h-6 text-gray-300" />
-                                  </div>
-                                )}
-                              </div>
+        <CustomItemModal
+          isOpen={customModalOpen}
+          onClose={() => setCustomModalOpen(false)}
+          onAdd={handleAddCustomItem}
+          loading={loading}
+        />
 
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-gray-800 truncate">
-                                    {service.service_name}
-                                  </span>
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${badgeColor}`}>
-                                    <Icon className="w-3 h-3 mr-1" />
-                                    {service.category}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
-                                  <span className="font-semibold text-gray-700">
-                                    {formatCurrency(service.service_charge)}
-                                  </span>
-                                  <span>•</span>
-                                  <span>{service.is_inventory ? `Stock: ${service.stock ?? 0}` : "Service"}</span>
-                                </div>
-                              </div>
+        {/* ====================================================
+            CONTEXT MENU
+        ==================================================== */}
 
-                              {isSelected && (
-                                <Check className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                              )}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            isCustom={contextMenu.isCustom}
+            onClose={() => setContextMenu(null)}
+            onDeduct={() => handleDeductItem(contextMenu.item)}
+            onDelete={() => handleDeleteCustomItem(contextMenu.item)}
+          />
+        )}
 
-                  {/* Quantity with +/- buttons */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Quantity
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={decreaseQuantity}
-                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                      >
-                        <Minus className="w-4 h-4 text-gray-600" />
-                      </button>
-                      <input
-                        type="number"
-                        min="0.5"
-                        step="0.5"
-                        value={itemQuantity}
-                        onChange={(e) => setItemQuantity(Number(e.target.value))}
-                        className="w-24 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <button
-                        type="button"
-                        onClick={increaseQuantity}
-                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                      >
-                        <Plus className="w-4 h-4 text-gray-600" />
-                      </button>
-                    </div>
-                  </div>
+        {/* ====================================================
+            HEADER
+        ==================================================== */}
 
-                  {selectedService && (
-                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Item:</span>
-                        <span className="font-semibold text-gray-800">{selectedService.service_name}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm mt-1">
-                        <span className="text-gray-600">Total:</span>
-                        <span className="font-bold text-blue-600">
-                          {formatCurrency(itemQuantity * selectedService.service_charge)}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onBack}
+              className="rounded-lg p-2 transition-colors hover:bg-gray-100"
+            >
+              <ArrowLeft className="h-6 w-6 text-gray-600" />
+            </button>
 
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAddItemModal(false);
-                        resetAddItemForm();
-                      }}
-                      className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAddService}
-                      disabled={loading || !selectedService}
-                      className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? (
-                        <>
-                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          <span>Adding...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="w-4 h-4" />
-                          <span>Add to Bill</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                // Custom Item Form
-                <div className="space-y-4">
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                    <div className="flex items-center gap-2 text-amber-700">
-                      <ShoppingBag className="w-5 h-5" />
-                      <span className="font-medium">Exclusive Custom Item</span>
-                    </div>
-                    <p className="text-sm text-amber-600 mt-1">
-                      Custom items are marked as "Exclusive" in the bill and can be deducted or removed.
-                    </p>
-                  </div>
+            <div>
+              <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-800">
+                <Receipt className="h-6 w-6 text-blue-600" />
+                Billing
+              </h1>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Item Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Enter item name"
-                      value={customItemName}
-                      onChange={(e) => setCustomItemName(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Quantity <span className="text-red-500">*</span>
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={decreaseQuantity}
-                          className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                        >
-                          <Minus className="w-4 h-4 text-gray-600" />
-                        </button>
-                        <input
-                          type="number"
-                          min="0.5"
-                          step="0.5"
-                          value={itemQuantity}
-                          onChange={(e) => setItemQuantity(Number(e.target.value))}
-                          className="w-24 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                        />
-                        <button
-                          type="button"
-                          onClick={increaseQuantity}
-                          className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                        >
-                          <Plus className="w-4 h-4 text-gray-600" />
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Unit Price <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        value={itemUnitPrice}
-                        onChange={(e) => setItemUnitPrice(Number(e.target.value))}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-
-                  {customItemName && itemUnitPrice > 0 && (
-                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Total:</span>
-                        <span className="font-bold text-amber-600">
-                          {formatCurrency(itemQuantity * itemUnitPrice)}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAddItemModal(false);
-                        resetAddItemForm();
-                      }}
-                      className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAddCustomItem}
-                      disabled={loading || !customItemName.trim() || itemUnitPrice <= 0}
-                      className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-lg hover:from-amber-700 hover:to-orange-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? (
-                        <>
-                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          <span>Adding...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="w-4 h-4" />
-                          <span>Add Exclusive Item</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
+              <p className="text-sm text-gray-500">
+                Registration #{registrationId}
+                {" • "}
+                {registrationInfo?.customer_name || "Loading..."}
+              </p>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Return/Deduct Item Modal */}
+        {/* ====================================================
+            STATIC REGISTRATION CARDS
+        ==================================================== */}
+
+        {registrationInfo && (
+          <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+            {/* CUSTOMER */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-blue-50 p-2">
+                  <User className="h-5 w-5 text-blue-600" />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-gray-500">Customer</div>
+                  <div className="truncate text-sm font-semibold text-gray-800">
+                    {registrationInfo.customer_name}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* PHONE */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-green-50 p-2">
+                  <Phone className="h-5 w-5 text-green-600" />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-gray-500">Phone</div>
+                  <div className="truncate text-sm font-semibold text-gray-800">
+                    {registrationInfo.phone_number}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ROOMS */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-purple-50 p-2">
+                  <Home className="h-5 w-5 text-purple-600" />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-gray-500">Rooms</div>
+                  <div className="text-sm font-semibold text-gray-800">
+                    {registrationInfo.rooms?.map((room, index) => (
+                      <span key={index} className="mr-1 inline-block">
+                        {room.room_number}
+                        {index < registrationInfo.rooms.length - 1 && ", "}
+                      </span>
+                    )) || "No rooms"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CHECK IN */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-amber-50 p-2">
+                  <Clock className="h-5 w-5 text-amber-600" />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-gray-500">Check-in</div>
+                  <div className="truncate text-sm font-semibold text-gray-800">
+                    {formatDate(registrationInfo.check_in)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ====================================================
+            BILLING BOX
+        ==================================================== */}
+
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+          {/* ==================================================
+              BILLING BOX HEADER
+          ================================================== */}
+
+          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-800">
+                {activePage === "bill" ? (
+                  <FileText className="h-5 w-5 text-blue-600" />
+                ) : (
+                  <Package className="h-5 w-5 text-blue-600" />
+                )}
+                {activePage === "bill" ? "Bill Items" : "Add Items"}
+              </h2>
+
+              <p className="mt-0.5 text-xs text-gray-500">
+                {activePage === "bill"
+                  ? "Right-click an item for return or deduct options"
+                  : "Select multiple items and add them together"}
+              </p>
+            </div>
+
+            {/* SWITCH BUTTON */}
+            <div className="flex rounded-lg bg-gray-100 p-1">
+              <button
+                onClick={() => setActivePage("bill")}
+                className={`rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                  activePage === "bill"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Receipt className="h-4 w-4" />
+                  Bill
+                </span>
+              </button>
+
+              <button
+                onClick={() => setActivePage("items")}
+                className={`rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                  activePage === "items"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  Add Items
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* ==================================================
+              PAGE AREA
+          ================================================== */}
+
+          <div className="relative min-h-[620px]">
+            {/* =================================================
+                BILL PAGE
+            ================================================= */}
+
+            {activePage === "bill" && (
+              <div key="bill" className="page-fade p-6">
+                {/* BILL SUMMARY */}
+                <div className="mb-5 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-blue-100 p-2.5">
+                      <Receipt className="h-5 w-5 text-blue-600" />
+                    </div>
+
+                    <div>
+                      <p className="font-semibold text-gray-800">Current Bill</p>
+                      <p className="text-xs text-gray-500">
+                        {bill?.items?.length || 0} item
+                        {bill?.items?.length === 1 ? "" : "s"} billed
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Total</p>
+                    <p className="text-xl font-bold text-blue-600">
+                      {formatCurrency(bill?.total || 0)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* EMPTY BILL */}
+                {bill?.items?.length === 0 ? (
+                  <div className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 text-center">
+                    <Receipt className="mb-4 h-16 w-16 text-gray-300" />
+                    <p className="font-medium text-gray-600">No items added to this bill yet.</p>
+                    <p className="mt-1 text-sm text-gray-400">Select services from Add Items.</p>
+
+                    <button
+                      onClick={() => setActivePage("items")}
+                      className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition hover:bg-blue-700"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Items
+                    </button>
+                  </div>
+                ) : (
+                  /* BILL TABLE */
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-200 bg-gray-50">
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                            Item
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                            Type
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                            Added By
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                            Qty
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                            Unit Price (NPR)
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                            Total (NPR)
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-gray-100">
+                        {bill?.items?.map((item) => {
+                          const isCustom = item.item_type === "custom";
+                          // Display the actual item type from database
+                          const displayType = isCustom ? "Exclusive" : item.item_type;
+
+                          return (
+                            <tr
+                              key={item.bill_id}
+                              onContextMenu={(e) => handleRightClick(e, item)}
+                              className={`cursor-context-menu transition-colors hover:bg-gray-50 ${
+                                isCustom ? "bg-amber-50/30" : ""
+                              }`}
+                            >
+                              {/* ITEM */}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  {isCustom ? (
+                                    <ShoppingBag className="h-4 w-4 text-amber-500" />
+                                  ) : item.is_inventory ? (
+                                    <Package className="h-4 w-4 text-blue-500" />
+                                  ) : (
+                                    <Coffee className="h-4 w-4 text-purple-500" />
+                                  )}
+
+                                  <span className="font-medium text-gray-800">
+                                    {item.item_name || `Service #${item.service_id}`}
+                                  </span>
+
+                                  {isCustom && (
+                                    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                      Exclusive
+                                    </span>
+                                  )}
+
+                                  {item.item_type === "service" && item.is_inventory && (
+                                    <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                      Inventory
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="mt-0.5 text-xs text-gray-500">
+                                  Added: {formatDate(item.added_at)}
+                                </div>
+                              </td>
+
+                              {/* TYPE - Show actual type from database */}
+                              <td className="px-4 py-3 text-sm capitalize text-gray-600">
+                                {displayType}
+                              </td>
+
+                              {/* ADDED BY - tag showing who added this item */}
+                              <td className="px-4 py-3">
+                                <AddedByTag addedBy={item.added_by} />
+                              </td>
+
+                              {/* QUANTITY */}
+                              <td className="px-4 py-3 text-right text-sm font-medium text-gray-800">
+                                {item.quantity}
+                              </td>
+
+                              {/* UNIT PRICE */}
+                              <td className="px-4 py-3 text-right text-sm text-gray-600">
+                                {formatCurrency(item.unit_price)}
+                              </td>
+
+                              {/* TOTAL */}
+                              <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800">
+                                {formatCurrency(item.total)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-200">
+                          <td colSpan="5" className="px-4 py-3 text-right font-semibold text-gray-700">
+                            Subtotal
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-800">
+                            {formatCurrency(bill?.subtotal || 0)}
+                          </td>
+                        </tr>
+
+                        <tr className="bg-blue-50/50">
+                          <td colSpan="5" className="px-4 py-3 text-right text-lg font-bold text-gray-800">
+                            Total
+                          </td>
+                          <td className="px-4 py-3 text-right text-lg font-bold text-blue-600">
+                            {formatCurrency(bill?.total || 0)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+
+                {/* GO TO ADD ITEMS */}
+                <div className="mt-5 flex justify-end">
+                  <button
+                    onClick={() => setActivePage("items")}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition hover:bg-blue-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Items
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* =================================================
+                ADD ITEMS PAGE
+            ================================================= */}
+
+            {activePage === "items" && (
+              <div key="items" className="page-fade">
+                {/* =================================================
+                    TWO COLUMN LAYOUT
+                ================================================= */}
+
+                <div className="flex flex-col lg:flex-row">
+                  {/* LEFT COLUMN - ITEMS GRID */}
+                  <div className="min-w-0 flex-1">
+                    {/* TOP TOOLBAR - SEARCH & FILTERS */}
+                    <div className="border-b border-gray-200 bg-white px-6 py-4">
+                      <div className="flex flex-col gap-3">
+                        {/* SEARCH + CUSTOM BUTTON ROW */}
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="relative w-full sm:max-w-md">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              placeholder="Search by name or category..."
+                              value={serviceSearch}
+                              onChange={(e) => setServiceSearch(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2.5 pl-10 pr-10 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                            />
+                            {serviceSearch && (
+                              <button
+                                onClick={() => setServiceSearch("")}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* CUSTOM ITEM BUTTON - GOLDEN YELLOW */}
+                          <button
+                            onClick={() => setCustomModalOpen(true)}
+                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:from-amber-600 hover:to-yellow-700"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Exclusive Item
+                          </button>
+                        </div>
+
+                        {/* CATEGORY FILTER TABS */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {CATEGORIES.map(({ value, label, icon: Icon }) => (
+                            <button
+                              key={value}
+                              onClick={() => setSelectedCategory(value)}
+                              className={`inline-flex items-center gap-1.5 rounded-lg border-2 px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                                selectedCategory === value
+                                  ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
+                                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                              }`}
+                            >
+                              <Icon
+                                className={`h-4 w-4 ${
+                                  selectedCategory === value ? "text-blue-500" : "text-gray-400"
+                                }`}
+                              />
+                              {label}
+                              {value !== "all" && (
+                                <span
+                                  className={`ml-1 rounded-full px-1.5 py-0.5 text-xs ${
+                                    selectedCategory === value
+                                      ? "bg-blue-100 text-blue-600"
+                                      : "bg-gray-100 text-gray-500"
+                                  }`}
+                                >
+                                  {categoryStats[value] || 0}
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* =================================================
+                        SERVICE GRID - 3 CARDS PER ROW
+                    ================================================= */}
+
+                    <div className="p-6">
+                      {filteredServices.length === 0 ? (
+                        <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
+                          <Package className="h-14 w-14 text-gray-300" />
+                          <h3 className="mt-4 font-medium text-gray-600">No services found</h3>
+                          <p className="mt-1 text-sm text-gray-400">
+                            Try another search or category.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {filteredServices.map((service) => {
+                            const Icon = CATEGORY_ICONS[service.category] || MoreHorizontal;
+                            const gradient =
+                              CATEGORY_COLORS[service.category] || "from-gray-500 to-gray-600";
+                            const badge =
+                              CATEGORY_BADGE_COLORS[service.category] ||
+                              "bg-gray-100 text-gray-700 border-gray-200";
+                            const selected = selectedItems[service.service_id];
+                            const isSelected = Boolean(selected);
+                            const stock = Number(service.stock ?? 0);
+                            const outOfStock = service.is_inventory && stock <= 0;
+                            const quantity = selected?.quantity || 1;
+
+                            return (
+                              <div
+                                key={service.service_id}
+                                className={`service-card overflow-hidden rounded-xl border-2 bg-white ${
+                                  isSelected
+                                    ? "border-blue-500 shadow-md shadow-blue-100"
+                                    : "border-gray-200 shadow-sm"
+                                } ${outOfStock ? "opacity-50" : ""}`}
+                              >
+                                {/* IMAGE - SQUARISH */}
+                                <button
+                                  type="button"
+                                  disabled={outOfStock}
+                                  onClick={() => toggleService(service)}
+                                  className="service-image-container relative block w-full"
+                                >
+                                  {service.picture ? (
+                                    <img
+                                      src={service.picture}
+                                      alt={service.service_name}
+                                      className="h-full w-full object-cover transition duration-300 hover:scale-105"
+                                    />
+                                  ) : (
+                                    <div
+                                      className={`fallback-image flex h-full w-full items-center justify-center bg-gradient-to-br ${gradient}`}
+                                    >
+                                      <Icon className="h-9 w-9 text-white/80" />
+                                    </div>
+                                  )}
+
+                                  {/* CATEGORY BADGE */}
+                                  <div className="absolute left-2.5 top-2.5">
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-full border bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold backdrop-blur-sm ${badge}`}
+                                    >
+                                      <Icon className="h-2.5 w-2.5" />
+                                      {service.category}
+                                    </span>
+                                  </div>
+
+                                  {/* INVENTORY BADGE */}
+                                  {service.is_inventory && (
+                                    <div className="absolute bottom-2.5 left-2.5">
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-600/90 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
+                                        <Package className="h-2.5 w-2.5" />
+                                        Inventory
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {/* SELECTED CHECK */}
+                                  {isSelected && (
+                                    <div className="absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-md">
+                                      <Check className="h-3.5 w-3.5" />
+                                    </div>
+                                  )}
+
+                                  {/* OUT OF STOCK */}
+                                  {outOfStock && (
+                                    <div className="absolute inset-1.5 flex items-center justify-center rounded-lg bg-black/40">
+                                      <span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-red-600">
+                                        OUT OF STOCK
+                                      </span>
+                                    </div>
+                                  )}
+                                </button>
+
+                                {/* CARD BODY */}
+                                <div className="p-3">
+                                  <h3 className="line-clamp-2 text-xs font-semibold leading-4 text-gray-800">
+                                    {service.service_name}
+                                  </h3>
+
+                                  <div className="mt-1.5 flex items-center justify-between">
+                                    <span className="text-sm font-bold text-gray-900">
+                                      {formatCurrency(service.service_charge)}
+                                    </span>
+                                    {service.is_inventory ? (
+                                      <span
+                                        className={`text-[10px] font-medium ${
+                                          stock <= 5 ? "text-red-500" : "text-gray-500"
+                                        }`}
+                                      >
+                                        Stock: {stock}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-gray-400"></span>
+                                    )}
+                                  </div>
+
+                                  {/* QUANTITY CONTROLS */}
+                                  {isSelected && (
+                                    <div className="mt-2 border-t border-gray-100 pt-2">
+                                      <div className="quantity-controls flex items-center justify-between gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => decreaseSelectedQuantity(service.service_id, e)}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                                        >
+                                          <Minus className="h-3 w-3" />
+                                        </button>
+
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          step="1"
+                                          value={quantity}
+                                          onClick={(e) => e.stopPropagation()}
+                                          onChange={(e) => setSelectedQuantity(service, e.target.value, e)}
+                                          className="h-7 w-12 rounded-md border border-gray-200 text-center text-xs font-bold outline-none focus:border-blue-500"
+                                        />
+
+                                        <button
+                                          type="button"
+                                          onClick={(e) => increaseSelectedQuantity(service.service_id, e)}
+                                          disabled={service.is_inventory && quantity >= stock}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                          <Plus className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* SELECT BUTTON */}
+                                  {!isSelected && !outOfStock && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleService(service)}
+                                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-md bg-gray-100 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:bg-blue-50 hover:text-blue-600"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      Select
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* RIGHT COLUMN - STICKY SELECTED ITEMS SIDEBAR */}
+                  <div className="lg:w-100 lg:pl-4 lg:pr-6 lg:pt-6">
+                    <div className="selected-items-sidebar">
+                      <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                            <Package className="h-4 w-4 text-blue-600" />
+                            Selected Items
+                          </h3>
+                          {selectedItemTypes > 0 && (
+                            <button
+                              onClick={clearSelectedItems}
+                              className="text-xs font-medium text-red-500 hover:text-red-700"
+                            >
+                              Clear All
+                            </button>
+                          )}
+                        </div>
+
+                        {selectedItemTypes === 0 ? (
+                          <div className="py-8 text-center">
+                            <ShoppingBag className="mx-auto mb-2 h-12 w-12 text-gray-300" />
+                            <p className="text-sm text-gray-400">No items selected</p>
+                            <p className="mt-1 text-xs text-gray-400">
+                              Click on items to add them
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Selected Items List */}
+                            <div className="max-h-[534px] space-y-2 overflow-y-auto pr-1">
+                              {selectedItemsArraySorted.map((item) => {
+                                const service = item.service;
+                                const ItemIcon = CATEGORY_ICONS[service.category] || Package;
+
+                                return (
+                                  <div
+                                    key={service.service_id}
+                                    className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white p-2.5 shadow-sm"
+                                  >
+                                    {/* Item Image / Icon */}
+                                    <div className="flex-shrink-0">
+                                      {service.picture ? (
+                                        <img
+                                          src={service.picture}
+                                          alt={service.service_name}
+                                          className="h-10 w-10 rounded-lg border border-gray-200 object-cover"
+                                        />
+                                      ) : (
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
+                                          <ItemIcon className="h-5 w-5 text-white" />
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Item Details */}
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate text-sm font-medium text-gray-800">
+                                        {service.service_name}
+                                      </p>
+                                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                                        <span>{formatCurrency(service.service_charge)}</span>
+                                        <span>•</span>
+                                        <span className="font-semibold text-blue-600">
+                                          ×{item.quantity}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Quantity Controls */}
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => decreaseSelectedQuantity(service.service_id, e)}
+                                        className="flex h-6 w-6 items-center justify-center rounded-md bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                                      >
+                                        <Minus className="h-3 w-3" />
+                                      </button>
+                                      <span className="w-6 text-center text-sm font-semibold text-gray-800">
+                                        {item.quantity}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => increaseSelectedQuantity(service.service_id, e)}
+                                        className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-600 text-white transition hover:bg-blue-700 disabled:opacity-40"
+                                        disabled={
+                                          service.is_inventory &&
+                                          item.quantity >= (service.stock || 0)
+                                        }
+                                      >
+                                        <Plus className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Summary & Action */}
+                            <div className="mt-4 border-t border-blue-200 pt-3">
+                              <div className="mb-2 flex justify-between text-sm">
+                                <span className="text-gray-600">Total Items:</span>
+                                <span className="font-semibold text-gray-800">
+                                  {selectedTotalQuantity}
+                                </span>
+                              </div>
+                              <div className="mb-3 flex justify-between text-sm">
+                                <span className="text-gray-600">Total Amount:</span>
+                                <span className="font-bold text-blue-600">
+                                  {formatCurrency(selectedItemsTotal)}
+                                </span>
+                              </div>
+                              <button
+                                onClick={handleAddSelectedItems}
+                                disabled={loading || selectedItemTypes === 0}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:from-blue-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {loading ? (
+                                  <>
+                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                    Adding...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Check className="h-4 w-4" />
+                                    Add to Bill
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* VIEW BILL BUTTON */}
+                <div className="flex items-center justify-between border-t border-gray-200 bg-white px-6 py-3">
+                  <div className="text-xs text-gray-500">
+                    {bill?.items?.length || 0} items already in bill
+                  </div>
+                  <button
+                    onClick={() => setActivePage("bill")}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                  >
+                    <Receipt className="h-4 w-4" />
+                    View Bill
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ====================================================
+            BOTTOM BACK
+        ==================================================== */}
+
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-6 py-2.5 text-gray-700 transition-colors hover:bg-gray-200"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Rooms
+          </button>
+        </div>
+      </div>
+
+      {/* ======================================================
+          RETURN / DEDUCT MODAL
+      ====================================================== */}
+
       {showReturnModal && returnItem && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-            <div className={`px-6 py-4 rounded-t-xl ${returnItem.item_type === "custom" ? "bg-gradient-to-r from-amber-600 to-orange-600" : "bg-gradient-to-r from-amber-600 to-orange-600"}`}>
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+            {/* HEADER */}
+            <div className="rounded-t-xl bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">
                     {returnItem.item_type === "custom" ? "Deduct Quantity" : "Return Item"}
                   </h2>
+
                   <p className="text-sm text-amber-100">
-                    {returnItem.item_name || `Service #${returnItem.service_id}`}
+                    {returnItem.item_name}
                     {returnItem.item_type === "custom" && " (Exclusive)"}
                   </p>
                 </div>
+
                 <button
                   onClick={() => {
                     setShowReturnModal(false);
                     setReturnItem(null);
                     setReturnQuantity(1);
                   }}
-                  className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                  className="rounded-lg p-1.5 transition-colors hover:bg-white/10"
                 >
-                  <X className="w-5 h-5 text-white" />
+                  <X className="h-5 w-5 text-white" />
                 </button>
               </div>
             </div>
 
+            {/* BODY */}
             <div className="p-6">
+              {/* DETAILS */}
               <div className="mb-4 space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Currently Billed:</span>
-                  <span className="font-semibold text-gray-800">{returnItem.quantity} units</span>
+                  <span className="font-semibold text-gray-800">
+                    {returnItem.quantity} units
+                  </span>
                 </div>
+
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Unit Price:</span>
-                  <span className="font-semibold text-gray-800">{formatCurrency(returnItem.unit_price)}</span>
+                  <span className="font-semibold text-gray-800">
+                    {formatCurrency(returnItem.unit_price)}
+                  </span>
                 </div>
+
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Total Billed:</span>
-                  <span className="font-semibold text-gray-800">{formatCurrency(returnItem.total)}</span>
+                  <span className="font-semibold text-gray-800">
+                    {formatCurrency(returnItem.total)}
+                  </span>
+                </div>
+
+                {/* Added By info */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Added By:</span>
+                  <AddedByTag addedBy={returnItem.added_by} />
                 </div>
               </div>
 
+              {/* QUANTITY */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
                   Quantity to {returnItem.item_type === "custom" ? "Deduct" : "Return"}
                 </label>
+
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setReturnQuantity(prev => Math.max(0.5, Number((prev - 0.5).toFixed(1))))}
-                    className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    onClick={() =>
+                      setReturnQuantity((prev) => Math.max(1, Number(prev) - 1))
+                    }
+                    className="rounded-lg bg-gray-100 p-2 transition-colors hover:bg-gray-200"
                   >
-                    <Minus className="w-4 h-4 text-gray-600" />
+                    <Minus className="h-4 w-4 text-gray-600" />
                   </button>
+
                   <input
                     type="number"
-                    min="0.5"
+                    min="1"
                     max={returnItem.quantity}
-                    step="0.5"
+                    step="1"
                     value={returnQuantity}
-                    onChange={(e) => setReturnQuantity(Number(e.target.value))}
-                    className="w-24 px-3 py-2 text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    onChange={(e) => {
+                      let value = parseInt(e.target.value, 10);
+                      if (Number.isNaN(value)) value = 1;
+                      value = Math.max(1, Math.min(Number(returnItem.quantity), value));
+                      setReturnQuantity(value);
+                    }}
+                    className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-center font-semibold outline-none focus:border-amber-500"
                   />
+
                   <button
                     type="button"
-                    onClick={() => setReturnQuantity(prev => Math.min(returnItem.quantity, Number((prev + 0.5).toFixed(1))))}
-                    className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    onClick={() =>
+                      setReturnQuantity((prev) =>
+                        Math.min(Number(returnItem.quantity), Number(prev) + 1)
+                      )
+                    }
+                    className="rounded-lg bg-gray-100 p-2 transition-colors hover:bg-gray-200"
                   >
-                    <Plus className="w-4 h-4 text-gray-600" />
+                    <Plus className="h-4 w-4 text-gray-600" />
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Max: {returnItem.quantity} units
-                </p>
+
+                <p className="mt-1 text-xs text-gray-500">Max: {returnItem.quantity} units</p>
               </div>
 
-              <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+              {/* AMOUNT */}
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">
                     {returnItem.item_type === "custom" ? "Amount to Deduct:" : "Refund Amount:"}
                   </span>
                   <span className="font-bold text-amber-600">
-                    {formatCurrency(returnQuantity * returnItem.unit_price)}
+                    {formatCurrency(Number(returnQuantity) * Number(returnItem.unit_price))}
                   </span>
                 </div>
-                {returnQuantity === returnItem.quantity && returnItem.item_type === "custom" && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    ⚠️ This will completely remove the item from the bill.
-                  </p>
-                )}
+
+                {returnQuantity === Number(returnItem.quantity) &&
+                  returnItem.item_type === "custom" && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      ⚠️ This will completely remove the item.
+                    </p>
+                  )}
               </div>
 
-              <div className="flex gap-3 mt-6">
+              {/* ACTIONS */}
+              <div className="mt-6 flex gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -1421,25 +2115,30 @@ export default function BillingPage({ registrationId, onBack, session }) {
                     setReturnItem(null);
                     setReturnQuantity(1);
                   }}
-                  className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="flex-1 rounded-lg px-4 py-2 text-gray-600 transition-colors hover:bg-gray-100"
                 >
                   Cancel
                 </button>
+
                 <button
                   type="button"
                   onClick={handleReturnItem}
-                  disabled={loading || returnQuantity <= 0 || returnQuantity > returnItem.quantity}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-lg hover:from-amber-700 hover:to-orange-700 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={
+                    loading ||
+                    returnQuantity <= 0 ||
+                    returnQuantity > Number(returnItem.quantity)
+                  }
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-white shadow-md transition-all hover:from-amber-700 hover:to-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? (
                     <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Processing...</span>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Processing...
                     </>
                   ) : (
                     <>
-                      <Check className="w-4 h-4" />
-                      <span>Confirm</span>
+                      <Check className="h-4 w-4" />
+                      Confirm
                     </>
                   )}
                 </button>
@@ -1448,17 +2147,6 @@ export default function BillingPage({ registrationId, onBack, session }) {
           </div>
         </div>
       )}
-
-      {/* Bottom Actions */}
-      <div className="mt-6 flex justify-end">
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Rooms
-        </button>
-      </div>
-    </div>
+    </>
   );
 }

@@ -1,31 +1,31 @@
 import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  UserPlus,
-  X,
-  Check,
-  CheckCircle,
-  Clock,
-  Search,
-  ChevronDown,
-  Home,
-  Building2,
-  Users,
-  User,
-  Bed,
-  IndianRupee,
-  RefreshCw,
-  ArrowRightLeft,
-  DoorOpen,
-  Plus,
-  FileText,
-  Phone,
-  Fingerprint,
-  Globe,
-  UserRound,
-  Wrench,
-  Filter,
-  CreditCard,
+    UserPlus,
+    X,
+    Check,
+    CheckCircle,
+    Clock,
+    Search,
+    ChevronDown,
+    Home,
+    Building2,
+    Users,
+    User,
+    Bed,
+    IndianRupee,
+    RefreshCw,
+    ArrowRightLeft,
+    DoorOpen,
+    Plus,
+    FileText,
+    Phone,
+    Fingerprint,
+    Globe,
+    UserRound,
+    Wrench,
+    Filter,
+    CreditCard,
 } from "lucide-react";
 
 // Import BillingPage
@@ -64,9 +64,8 @@ function CustomDropdown({ options, value, onChange, placeholder, label, error, i
             <button
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full px-4 py-2.5 bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center justify-between hover:border-blue-400 transition-colors ${
-                    error ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2.5 bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center justify-between hover:border-blue-400 transition-colors ${error ? 'border-red-500' : 'border-gray-300'
+                    }`}
             >
                 <span className={selectedOption ? 'text-gray-900' : 'text-gray-500'}>
                     {displayLabel}
@@ -84,9 +83,8 @@ function CustomDropdown({ options, value, onChange, placeholder, label, error, i
                                 onChange(option.value);
                                 setIsOpen(false);
                             }}
-                            className={`w-full px-4 py-2.5 text-left hover:bg-blue-50 transition-colors flex items-center justify-between ${
-                                option.value === value ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
-                            }`}
+                            className={`w-full px-4 py-2.5 text-left hover:bg-blue-50 transition-colors flex items-center justify-between ${option.value === value ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                                }`}
                         >
                             <span>{option.label}</span>
                             {option.value === value && <Check className="w-4 h-4 text-blue-600" />}
@@ -221,11 +219,9 @@ function RoomCard({ room, onClick, onContextMenu, isSelected = false, getReserve
         <div
             onClick={() => onClick(room)}
             onContextMenu={(e) => onContextMenu(e, room)}
-            className={`group relative w-52 flex-shrink-0 rounded-xl border-2 p-4 shadow-sm transition-all duration-200 ${config.bg} ${
-                config.border
-            } ${isSelected ? "ring-2 ring-blue-500 ring-offset-2" : ""} ${
-                isReserved || isAvailable ? "cursor-pointer hover:-translate-y-1 hover:shadow-md" : "cursor-default opacity-75"
-            }`}
+            className={`group relative w-52 flex-shrink-0 rounded-xl border-2 p-4 shadow-sm transition-all duration-200 ${config.bg} ${config.border
+                } ${isSelected ? "ring-2 ring-blue-500 ring-offset-2" : ""} ${isReserved || isAvailable ? "cursor-pointer hover:-translate-y-1 hover:shadow-md" : "cursor-default opacity-75"
+                }`}
         >
             {/* Status Indicator Dot */}
             <div className="absolute top-3 right-3 flex items-center gap-1.5">
@@ -259,8 +255,8 @@ function RoomCard({ room, onClick, onContextMenu, isSelected = false, getReserve
                 {features.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                         {features.slice(0, 6).map((feature, idx) => (
-                            <span 
-                                key={idx} 
+                            <span
+                                key={idx}
                                 className="rounded-full bg-white/80 px-2 py-0.5 text-xs text-gray-600 ring-1 ring-gray-200"
                             >
                                 {feature}
@@ -437,13 +433,13 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
 
     const filteredRooms = rooms.filter((room) => {
         const searchLower = searchQuery.toLowerCase();
-        const matchesSearch = 
+        const matchesSearch =
             room.room_number.toLowerCase().includes(searchLower) ||
             (room.features && room.features.toLowerCase().includes(searchLower)) ||
             room.status.toLowerCase().includes(searchLower);
-        
+
         const matchesBedFilter = bedFilter === "all" || room.no_of_beds === parseInt(bedFilter);
-        
+
         return matchesSearch && matchesBedFilter;
     });
 
@@ -824,10 +820,6 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         }
     }
 
-    // ============================================================
-    // CREATE BOOKING
-    // ============================================================
-
     async function handleCreateBooking(e) {
         e.preventDefault();
         clearMessages();
@@ -836,10 +828,12 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
             showError("Please search and select a customer first.");
             return;
         }
+
         if (selectedRooms.length === 0) {
             showError("Please select at least one room.");
             return;
         }
+
         if (maleCount + femaleCount <= 0) {
             showError("At least one guest is required.");
             return;
@@ -850,13 +844,21 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         try {
             const registrationId = await invoke("create_booking", {
                 customerId: Number(selectedCustomer.customer_id),
+
+                // Let Rust use CURRENT_TIMESTAMP
+                checkIn: null,
+
                 maleCount: Number(maleCount),
                 femaleCount: Number(femaleCount),
-                relation,
+                relation: relation.trim(),
+
                 roomIds: selectedRooms.map((id) => Number(id)),
+
+                // Current logged-in username
+                username: session?.username || "system",
             });
 
-            showSuccess(`Registered successfully.`);
+            showSuccess(`Registration #${registrationId} created successfully.`);
 
             setSelectedRooms([]);
             setSelectedCustomer(null);
@@ -869,6 +871,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
             setRegistrationStep(1);
 
             await refreshData();
+
         } catch (err) {
             console.error("Error creating booking:", err);
             showError(String(err));
@@ -1473,29 +1476,31 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                 </div>
                             )}
 
-                            {/* Billing Button in Customer Popup */}
-                            <button
-                                onClick={() => {
-                                    setShowCustomerPopup(false);
-                                    setCustomerPopupData(null);
-                                    setBillingRegistrationId(customerPopupData.registration_id);
-                                    setShowBillingPage(true);
-                                }}
-                                className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg"
-                            >
-                                <CreditCard className="w-4 h-4" />
-                                Billing
-                            </button>
+                            <div className="mt-6 flex gap-2 justify-end">
+                                {/* Billing Button in Customer Popup */}
+                                <button
+                                    onClick={() => {
+                                        setShowCustomerPopup(false);
+                                        setCustomerPopupData(null);
+                                        setBillingRegistrationId(customerPopupData.registration_id);
+                                        setShowBillingPage(true);
+                                    }}
+                                    className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-700 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 shadow-md hover:shadow-lg"
+                                >
+                                    <CreditCard className="w-4 h-4" />
+                                    Billing
+                                </button>
 
-                            <button
-                                onClick={() => {
-                                    setShowCustomerPopup(false);
-                                    setCustomerPopupData(null);
-                                }}
-                                className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
-                            >
-                                Close
-                            </button>
+                                <button
+                                    onClick={() => {
+                                        setShowCustomerPopup(false);
+                                        setCustomerPopupData(null);
+                                    }}
+                                    className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
+                                >
+                                    Close
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1536,9 +1541,8 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                             <div className="mb-6 flex items-center gap-2">
                                 <div className={`flex items-center gap-2 ${registrationStep >= 1 ? "text-blue-600" : "text-gray-400"}`}>
                                     <span
-                                        className={`flex h-8 w-8 items-center justify-center rounded-full font-bold ${
-                                            registrationStep >= 1 ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600"
-                                        }`}
+                                        className={`flex h-8 w-8 items-center justify-center rounded-full font-bold ${registrationStep >= 1 ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600"
+                                            }`}
                                     >
                                         1
                                     </span>
@@ -1547,9 +1551,8 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                 <div className={`h-0.5 flex-1 ${registrationStep >= 2 ? "bg-blue-600" : "bg-gray-200"}`} />
                                 <div className={`flex items-center gap-2 ${registrationStep >= 2 ? "text-blue-600" : "text-gray-400"}`}>
                                     <span
-                                        className={`flex h-8 w-8 items-center justify-center rounded-full font-bold ${
-                                            registrationStep >= 2 ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600"
-                                        }`}
+                                        className={`flex h-8 w-8 items-center justify-center rounded-full font-bold ${registrationStep >= 2 ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600"
+                                            }`}
                                     >
                                         2
                                     </span>
@@ -1606,7 +1609,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                                                         Found
                                                                     </span>
                                                                 </div>
-                                                                
+
                                                                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                                                                     <div className="flex items-center gap-2 text-sm">
                                                                         <Phone className="w-3.5 h-3.5 text-gray-400" />
@@ -1795,11 +1798,10 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                                                             type="button"
                                                                             key={room.room_id}
                                                                             onClick={() => toggleRoom(room.room_id)}
-                                                                            className={`p-3 border-2 rounded-lg text-left transition-all ${
-                                                                                isSelected
-                                                                                    ? "border-blue-500 bg-blue-50 shadow-md"
-                                                                                    : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
-                                                                            }`}
+                                                                            className={`p-3 border-2 rounded-lg text-left transition-all ${isSelected
+                                                                                ? "border-blue-500 bg-blue-50 shadow-md"
+                                                                                : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                                                                                }`}
                                                                         >
                                                                             <div className="flex items-center justify-between">
                                                                                 <span className="text-lg font-bold text-gray-800">{room.room_number}</span>
@@ -2003,11 +2005,10 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-sm font-semibold text-gray-800">Room {room.room_number}</span>
                                                         <span
-                                                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                                                room.status === "active"
-                                                                    ? "bg-emerald-100 text-emerald-700"
-                                                                    : "bg-gray-100 text-gray-600"
-                                                            }`}
+                                                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${room.status === "active"
+                                                                ? "bg-emerald-100 text-emerald-700"
+                                                                : "bg-gray-100 text-gray-600"
+                                                                }`}
                                                         >
                                                             {room.status}
                                                         </span>

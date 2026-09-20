@@ -12,3 +12,42 @@ body{
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
 }
+
+/* Prevent body scrolling */
+html, body {
+  overflow: hidden !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Allow scrolling only within specific containers */
+.billing-main-container {
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Hide scrollbar but allow scrolling (optional) */
+.billing-main-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.billing-main-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.billing-main-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+}
+
+.billing-main-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}

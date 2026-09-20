@@ -99,12 +99,6 @@ function RoomPage({ session }) {
             errors.roomRate = 'Rate must be greater than 0';
         }
 
-        // Number of beds validation
-        if (!noOfBeds.trim()) {
-            errors.noOfBeds = 'Number of beds is required';
-        } else if (Number(noOfBeds) < 1) {
-            errors.noOfBeds = 'Must have at least 1 bed';
-        }
 
         setFormErrors(errors);
         return Object.keys(errors).length === 0;
@@ -644,10 +638,8 @@ function RoomPage({ session }) {
                                             if (formErrors.noOfBeds) clearFieldError('noOfBeds');
                                         }}
                                         placeholder="2"
-                                        min="1"
                                         className={`w-full pl-8 pr-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${formErrors.noOfBeds ? 'border-red-500' : 'border-gray-300'
                                             }`}
-                                        required
                                     />
                                 </div>
                                 {formErrors.noOfBeds && (

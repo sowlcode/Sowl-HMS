@@ -1,3 +1,4 @@
+mod bill_items;
 mod booking;
 mod commands;
 mod customer;
@@ -5,36 +6,89 @@ mod database;
 mod food_services;
 mod room_management;
 mod session;
-mod bill_items;
+mod room_charges;
 
 pub fn run() {
     tauri::Builder::default()
         .manage(session::SessionState::new())
+
         .setup(|app| {
+            // ====================================================
+            // 1. INITIALIZE / MIGRATE DATABASE
+            // ====================================================
+
             database::initialize_database(app.handle())?;
+
+            // ====================================================
+            // 2. CATCH UP ROOM CHARGES
+            // ====================================================
+            //
+            // Run shortly after startup so the database has already
+            // been initialized.
+            //
+            // This catches up ALL active rooms.
+            //
+            // ====================================================
+
+            let handle = app.handle().clone();
+
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(
+                    std::time::Duration::from_millis(500)
+                )
+                .await;
+
+                if let Err(e) =
+                    room_charges::catch_up_room_charges_from_app(&handle)
+                {
+                    eprintln!(
+                        "Room charge catch-up failed: {}",
+                        e
+                    );
+                }
+            });
+
             Ok(())
         })
+
+        // ========================================================
+        // TAURI COMMANDS
+        // ========================================================
+
         .invoke_handler(tauri::generate_handler![
-            // Auth commands
+
+            // ----------------------------------------------------
+            // AUTH
+            // ----------------------------------------------------
+
             commands::auth::login,
             commands::auth::get_session,
             commands::auth::logout,
-            
-            // User commands
+
+            // ----------------------------------------------------
+            // USERS
+            // ----------------------------------------------------
+
             commands::users::create_user,
             commands::users::list_users,
             commands::users::change_user_password,
             commands::users::delete_user,
 
-            // Customer commands
+            // ----------------------------------------------------
+            // CUSTOMERS
+            // ----------------------------------------------------
+
             customer::add_customer,
             customer::update_customer,
             customer::delete_customer,
             customer::get_customer,
             customer::list_customers,
             customer::search_customers,
-            
-            // Room commands
+
+            // ----------------------------------------------------
+            // ROOMS
+            // ----------------------------------------------------
+
             room_management::add_room,
             room_management::delete_room,
             room_management::update_room,
@@ -43,7 +97,10 @@ pub fn run() {
             room_management::set_room_maintenance,
             room_management::remove_room_maintenance,
 
-            // Booking commands
+            // ----------------------------------------------------
+            // BOOKINGS / REGISTRATIONS
+            // ----------------------------------------------------
+
             booking::create_booking,
             booking::add_room_to_registration,
             booking::change_registration_room,
@@ -54,21 +111,36 @@ pub fn run() {
             booking::checkout_room,
             booking::checkout_registration,
 
-            // Food Services commands
+            // ----------------------------------------------------
+            // FOOD & SERVICES
+            // ----------------------------------------------------
+
             food_services::add_food_service,
             food_services::add_food_service_stock,
             food_services::update_food_service,
             food_services::delete_food_service,
             food_services::get_food_services,
 
-            // Bill Items Functions - THESE ARE THE CRITICAL ONES
+            // ----------------------------------------------------
+            // BILL ITEMS
+            // ----------------------------------------------------
+
             bill_items::add_service_to_registration,
             bill_items::add_custom_bill_item,
             bill_items::return_service_quantity,
             bill_items::get_registration_bill,
             bill_items::delete_custom_bill_item,
             bill_items::update_custom_bill_item_quantity,
+
+            // ----------------------------------------------------
+            // ROOM CHARGES
+            // ----------------------------------------------------
+            //
+            // Frontend can manually trigger synchronization.
+            //
+            room_charges::sync_room_charges,
         ])
+
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
