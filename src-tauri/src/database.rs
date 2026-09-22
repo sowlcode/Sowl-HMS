@@ -233,6 +233,41 @@ CREATE TABLE IF NOT EXISTS bill_items (
 "#,
         [],
     )?;
+
+    // ============================================================
+    // PAYMENTS
+    // ============================================================
+
+    conn.execute(
+        r#"
+    CREATE TABLE IF NOT EXISTS payments (
+        payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        registration_id INTEGER NOT NULL,
+
+        booking_id INTEGER,
+
+        payment_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+
+        payment_method TEXT NOT NULL
+            CHECK (payment_method IN (
+                'online',
+                'cash'
+            )),
+
+        payment_datetime DATETIME NOT NULL
+            DEFAULT CURRENT_TIMESTAMP,
+
+        payment_receiver TEXT NOT NULL,
+
+        FOREIGN KEY (registration_id)
+            REFERENCES registrations(registration_id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+    );
+    "#,
+        [],
+    )?;
     // ============================================================
     // SEED ADMIN
     // ============================================================

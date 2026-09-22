@@ -394,11 +394,7 @@ pub fn create_booking(
                 CURRENT_TIMESTAMP,
                 NULL,
                 'active',
-                CASE
-                    WHEN CAST(strftime('%H', 'now', 'localtime') AS INTEGER) < 12
-                        THEN date('now', 'localtime')
-                    ELSE date('now', 'localtime', '+1 day')
-                END,
+                date('now', 'localtime'),
                 ?5
             )
             "#,
@@ -537,11 +533,7 @@ pub fn add_room_to_registration(
                 CURRENT_TIMESTAMP,
                 NULL,
                 'active',
-                CASE
-                    WHEN CAST(strftime('%H', 'now', 'localtime') AS INTEGER) < 12
-                        THEN date('now', 'localtime')
-                    ELSE date('now', 'localtime', '+1 day')
-                END,
+                date('now', 'localtime'),
                 ?5
             )
         "#,
@@ -732,11 +724,7 @@ pub fn change_registration_room(
                 CURRENT_TIMESTAMP,
                 NULL,
                 'active',
-                CASE
-                    WHEN CAST(strftime('%H', 'now', 'localtime') AS INTEGER) < 12
-                        THEN date('now', 'localtime')
-                    ELSE date('now', 'localtime', '+1 day')
-                END,
+                date('now', 'localtime'),
                 ?5
             )
         "#,

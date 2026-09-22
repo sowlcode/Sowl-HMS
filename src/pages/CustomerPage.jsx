@@ -63,11 +63,12 @@ function CustomerPage() {
     const [selectedCamera, setSelectedCamera] = useState("");
     const [cameraLoading, setCameraLoading] = useState(false);
     const [isCameraDropdownOpen, setIsCameraDropdownOpen] = useState(false);
+    const [videoReady, setVideoReady] = useState(false);
+    const [stream, setStream] = useState(null);
 
     const videoRef = useRef(null);
     const streamRef = useRef(null);
     const cameraDropdownRef = useRef(null);
-    const videoReadyCheckRef = useRef(null);
     const fileInputRef = useRef(null);
 
     // Message functions
@@ -106,7 +107,6 @@ function CustomerPage() {
     const validateForm = () => {
         const errors = {};
 
-        // Name validation - must contain space
         if (!name.trim()) {
             errors.name = 'Full name is required';
         } else if (!name.trim().includes(' ')) {
@@ -115,7 +115,6 @@ function CustomerPage() {
             errors.name = 'Please enter both first and last name';
         }
 
-        // Phone validation - at least 10 digits
         const phoneDigits = phoneNumber.replace(/\D/g, '');
         if (!phoneNumber.trim()) {
             errors.phoneNumber = 'Phone number is required';
@@ -129,7 +128,6 @@ function CustomerPage() {
         return Object.keys(errors).length === 0;
     };
 
-    // Clear a specific form error
     const clearFieldError = (field) => {
         setFormErrors(prev => {
             const newErrors = { ...prev };
@@ -209,17 +207,18 @@ function CustomerPage() {
         loadCustomers();
     }, [page, search]);
 
-
     // ---------------------------------------------------------
     // CAMERA FUNCTIONS
     // ---------------------------------------------------------
 
-    async function getCameras() {
-        setCameraError("");
-
+    /**
+     * Refresh the list of available cameras.
+     * Only reliable AFTER getUserMedia has been called at least once.
+     */
+    async function refreshCameraList() {
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-                throw new Error("Camera API is not supported.");
+                return [];
             }
 
             const devices = await navigator.mediaDevices.enumerateDevices();
@@ -227,152 +226,86 @@ function CustomerPage() {
                 (device) => device.kind === "videoinput"
             );
 
-            if (videoDevices.length === 0) {
-                setCameras([]);
-                setCameraError("No camera was found.");
-                return [];
-            }
-
             setCameras(videoDevices);
-
-            // Keep current camera if it still exists
-            if (
-                !selectedCamera ||
-                !videoDevices.some((device) => device.deviceId === selectedCamera)
-            ) {
-                setSelectedCamera(videoDevices[0].deviceId);
-            }
-
             return videoDevices;
         } catch (error) {
-            console.error("Error detecting cameras:", error);
-            setCameraError("Unable to detect available cameras.");
+            console.error("Error enumerating cameras:", error);
             return [];
         }
     }
 
+    /**
+     * Open the camera.
+     *
+     * Key fix: does NOT touch videoRef.current here. We just get the
+     * stream and store it in state. A separate useEffect attaches the
+     * stream to the <video> element once React has actually mounted it.
+     */
     async function openCamera(cameraId = null) {
         setCameraError("");
         setCameraLoading(true);
+        setVideoReady(false);
 
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 throw new Error("Camera API is not supported.");
             }
 
-            // Stop any existing stream first
             stopCamera();
 
-            /*
-             * Important:
-             * Request camera permission first.
-             *
-             * This is important because some browsers/Tauri WebView
-             * do not expose useful device information until permission
-             * has been granted.
-             */
-            let stream;
+            let newStream;
 
             if (cameraId) {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        deviceId: { exact: cameraId },
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                    },
-                    audio: false,
-                });
+                try {
+                    newStream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            deviceId: { exact: cameraId },
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                        },
+                        audio: false,
+                    });
+                } catch (err) {
+                    console.warn("Failed to open camera by ID, falling back to default:", err);
+                    newStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                        audio: false,
+                    });
+                }
             } else {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                    },
+                newStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false,
                 });
             }
 
-            streamRef.current = stream;
+            streamRef.current = newStream;
+            setStream(newStream);
 
-            // Now enumerate cameras AFTER permission
-            const devices = await navigator.mediaDevices.enumerateDevices();
+            // Permission is granted now — enumerate devices
+            const videoDevices = await refreshCameraList();
 
-            const videoDevices = devices.filter(
-                (device) => device.kind === "videoinput"
-            );
-
-            setCameras(videoDevices);
-
-            // Determine which camera is actually being used
-            const activeTrack = stream.getVideoTracks()[0];
+            const activeTrack = newStream.getVideoTracks()[0];
             const settings = activeTrack?.getSettings();
-
             const activeCameraId =
-                settings?.deviceId ||
-                cameraId ||
-                videoDevices[0]?.deviceId ||
-                "";
-
+                settings?.deviceId || cameraId || videoDevices[0]?.deviceId || "";
             setSelectedCamera(activeCameraId);
 
+            // Show the <video>. The effect below attaches the stream
+            // once the element is mounted.
             setCameraOpen(true);
             setCameraLoading(false);
-
-            // Attach stream to video
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-
-                await new Promise((resolve) => {
-                    const video = videoRef.current;
-
-                    if (!video) {
-                        resolve();
-                        return;
-                    }
-
-                    if (video.readyState >= 2) {
-                        resolve();
-                        return;
-                    }
-
-                    video.onloadedmetadata = () => resolve();
-                });
-
-                await videoRef.current.play();
-
-                // Wait until actual video dimensions are available
-                if (videoReadyCheckRef.current) {
-                    clearInterval(videoReadyCheckRef.current);
-                }
-
-                videoReadyCheckRef.current = setInterval(() => {
-                    if (
-                        videoRef.current &&
-                        videoRef.current.videoWidth > 0 &&
-                        videoRef.current.videoHeight > 0
-                    ) {
-                        clearInterval(videoReadyCheckRef.current);
-                        videoReadyCheckRef.current = null;
-                    }
-                }, 50);
-            }
         } catch (error) {
             console.error("Camera error:", error);
 
             if (error?.name === "NotAllowedError") {
-                setCameraError(
-                    "Camera permission was denied. Please allow camera access and try again."
-                );
+                setCameraError("Camera permission was denied. Please allow camera access and try again.");
             } else if (error?.name === "NotFoundError") {
                 setCameraError("No camera was found.");
             } else if (error?.name === "NotReadableError") {
-                setCameraError(
-                    "The camera is already being used by another application."
-                );
+                setCameraError("The camera is already being used by another application.");
             } else if (error?.name === "OverconstrainedError") {
-                setCameraError(
-                    "The selected camera is not available. Please select another camera."
-                );
+                setCameraError("The selected camera is not available. Please select another camera.");
             } else {
                 setCameraError("Unable to access camera.");
             }
@@ -382,6 +315,38 @@ function CustomerPage() {
             setCameraLoading(false);
         }
     }
+
+    // Attach stream to <video> once the element is mounted.
+    useEffect(() => {
+        if (!cameraOpen || !stream || !videoRef.current) return;
+
+        const video = videoRef.current;
+        video.srcObject = stream;
+
+        const handleLoadedMetadata = () => {
+            video.play().catch((err) => {
+                console.warn("video.play() failed:", err);
+            });
+        };
+
+        const handleCanPlay = () => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                setVideoReady(true);
+            }
+        };
+
+        video.addEventListener("loadedmetadata", handleLoadedMetadata);
+        video.addEventListener("canplay", handleCanPlay);
+
+        // If already ready (re-render case), fire immediately
+        if (video.readyState >= 1) handleLoadedMetadata();
+        if (video.readyState >= 3 && video.videoWidth > 0) setVideoReady(true);
+
+        return () => {
+            video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+            video.removeEventListener("canplay", handleCanPlay);
+        };
+    }, [cameraOpen, stream]);
 
     async function changeCamera(cameraId) {
         if (!cameraId) return;
@@ -410,10 +375,8 @@ function CustomerPage() {
             videoRef.current.srcObject = null;
         }
 
-        if (videoReadyCheckRef.current) {
-            clearInterval(videoReadyCheckRef.current);
-            videoReadyCheckRef.current = null;
-        }
+        setStream(null);
+        setVideoReady(false);
     }
 
     function closeCamera() {
@@ -432,13 +395,8 @@ function CustomerPage() {
             return;
         }
 
-        if (video.readyState < 2) {
+        if (!videoReady || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
             showError("Camera is still starting. Please wait a moment.");
-            return;
-        }
-
-        if (video.videoWidth === 0 || video.videoHeight === 0) {
-            showError("Camera video is not ready yet. Please try again.");
             return;
         }
 
@@ -526,15 +484,27 @@ function CustomerPage() {
     }
 
     // ---------------------------------------------------------
+    // TAKE PHOTO BUTTON HANDLER
+    // ---------------------------------------------------------
+
+    async function handleTakePhotoClick() {
+        clearMessages();
+
+        if (selectedCamera) {
+            await openCamera(selectedCamera);
+        } else {
+            await openCamera(null);
+        }
+    }
+
+    // ---------------------------------------------------------
     // SUBMIT CUSTOMER
     // ---------------------------------------------------------
 
     async function handleSubmit(e) {
         e.preventDefault();
 
-        // Validate form
         if (!validateForm()) {
-            // Show first error as message
             const firstError = Object.values(formErrors)[0];
             if (firstError) {
                 showError(firstError);
@@ -852,10 +822,10 @@ function CustomerPage() {
                     onClick={() => setIsCameraDropdownOpen(!isCameraDropdownOpen)}
                     className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center justify-between hover:border-blue-400 transition-colors"
                 >
-                    <span className="text-gray-900">
+                    <span className="text-gray-900 truncate">
                         {selectedCameraObj?.label || selectedCameraObj?.deviceId || 'Select Camera'}
                     </span>
-                    <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isCameraDropdownOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${isCameraDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {isCameraDropdownOpen && cameras.length > 0 && (
@@ -871,9 +841,9 @@ function CustomerPage() {
                                 className={`w-full px-4 py-2.5 text-left hover:bg-blue-50 transition-colors flex items-center justify-between ${camera.deviceId === selectedCamera ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
                                     }`}
                             >
-                                <span>{camera.label || `Camera ${index + 1}`}</span>
+                                <span className="truncate">{camera.label || `Camera ${index + 1}`}</span>
                                 {camera.deviceId === selectedCamera && (
-                                    <CheckIcon className="w-4 h-4 text-blue-600" />
+                                    <CheckIcon className="w-4 h-4 text-blue-600 flex-shrink-0" />
                                 )}
                             </button>
                         ))}
@@ -884,7 +854,7 @@ function CustomerPage() {
     }
 
     // ---------------------------------------------------------
-    // CLEAN CAMERA
+    // CLEANUP ON UNMOUNT
     // ---------------------------------------------------------
 
     useEffect(() => {
@@ -1122,17 +1092,7 @@ function CustomerPage() {
                                         <div className="flex flex-wrap gap-3">
                                             <button
                                                 type="button"
-                                                onClick={async () => {
-                                                    await getCameras();
-                                                    if (cameras.length > 0) {
-                                                        await openCamera();
-                                                    } else {
-                                                        await getCameras();
-                                                        if (cameras.length > 0) {
-                                                            await openCamera();
-                                                        }
-                                                    }
-                                                }}
+                                                onClick={handleTakePhotoClick}
                                                 className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
                                             >
                                                 <CameraIcon className="w-4 h-4" />
@@ -1177,11 +1137,19 @@ function CustomerPage() {
                                                 className="w-full max-w-lg rounded-lg bg-black"
                                             />
 
+                                            {!videoReady && (
+                                                <p className="mt-2 text-sm text-gray-500 flex items-center gap-2">
+                                                    <span className="w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                                                    Camera is starting...
+                                                </p>
+                                            )}
+
                                             <div className="flex flex-wrap gap-3 mt-3">
                                                 <button
                                                     type="button"
                                                     onClick={takePhoto}
-                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-colors"
+                                                    disabled={!videoReady}
+                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     <CameraIcon className="w-4 h-4" />
                                                     Take Photo
