@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle};
 
 use crate::database::database_path;
 use crate::room_charges::catch_up_room_charges;
@@ -77,24 +77,6 @@ pub struct RegistrationHistory {
     pub check_in: String,
     pub check_out: Option<String>,
     pub room_count: i64,
-}
-
-// ============================================================
-// BILL ITEM STRUCTURE
-// ============================================================
-
-#[derive(Debug, Serialize)]
-pub struct BillItem {
-    pub bill_id: i64,
-    pub registration_id: i64,
-    pub service_id: Option<i64>,
-    pub item_type: String,
-    pub item_name: String,
-    pub quantity: f64,
-    pub unit_price: f64,
-    pub total: f64,
-    pub added_at: String,
-    pub added_by: String,
 }
 
 // ============================================================
@@ -776,66 +758,6 @@ pub fn change_registration_room(
     tx.commit().map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-// ============================================================
-// GET BILL ITEMS FOR REGISTRATION
-// ============================================================
-
-#[tauri::command]
-pub fn get_registration_bill_items(
-    app: AppHandle,
-    registration_id: i64,
-) -> Result<Vec<BillItem>, String> {
-    let conn = get_connection(&app).map_err(|e| e.to_string())?;
-
-    // Ensure pending nightly charges are captured before reading
-    catch_up_room_charges(&conn, Some(registration_id))?;
-
-    let mut stmt = conn
-        .prepare(
-            "
-            SELECT 
-                bill_id,
-                registration_id,
-                service_id,
-                item_type,
-                item_name,
-                quantity,
-                unit_price,
-                total,
-                added_at,
-                added_by
-            FROM bill_items 
-            WHERE registration_id = ?1
-            ORDER BY added_at DESC
-            ",
-        )
-        .map_err(|e| format!("Prepare error: {}", e))?;
-
-    let rows = stmt
-        .query_map(params![registration_id], |row| {
-            Ok(BillItem {
-                bill_id: row.get(0)?,
-                registration_id: row.get(1)?,
-                service_id: row.get(2)?,
-                item_type: row.get(3)?,
-                item_name: row.get(4)?,
-                quantity: row.get(5)?,
-                unit_price: row.get(6)?,
-                total: row.get(7)?,
-                added_at: row.get(8)?,
-                added_by: row.get(9)?,
-            })
-        })
-        .map_err(|e| format!("Query error: {}", e))?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row.map_err(|e| format!("Row error: {}", e))?);
-    }
-
-    Ok(items)
 }
 
 // ============================================================
