@@ -628,8 +628,8 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
         }
 
         const found = customers.find((c) => {
-            const phoneMatch = c.phone_number && c.phone_number.includes(trimmed);
-            const docMatch = c.document_number && c.document_number.includes(trimmed);
+            const phoneMatch = c.phone_number && c.phone_number === trimmed;
+            const docMatch = c.document_number && c.document_number === trimmed;
             return phoneMatch || docMatch;
         });
 

@@ -79,6 +79,15 @@ pub struct RegistrationHistory {
     pub room_count: i64,
 }
 
+#[derive(Debug, Serialize)]
+pub struct RegistrationHistoryPage {
+    pub registrations: Vec<RegistrationHistory>,
+    pub total_count: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub total_pages: i64,
+}
+
 // ============================================================
 // DATABASE CONNECTION
 // ============================================================
@@ -1173,54 +1182,136 @@ pub fn get_registration_rooms(
 // ============================================================
 
 #[tauri::command]
-pub fn get_registration_history(app: AppHandle,
-    state: tauri::State<'_, crate::session::SessionState>
-) -> Result<Vec<RegistrationHistory>, String> {
+pub fn get_registration_history(
+    app: AppHandle,
+    state: tauri::State<'_, crate::session::SessionState>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+    search: Option<String>,
+) -> Result<RegistrationHistoryPage, String> {
     crate::session::require_session(&state)?;
 
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
+    // --------------------------------------------------------
+    // PAGINATION DEFAULTS AND VALIDATION
+    // --------------------------------------------------------
+
+    let page = page.unwrap_or(1).max(1);
+    let page_size = page_size.unwrap_or(50).clamp(1, 200);
+    let offset = (page - 1)
+        .checked_mul(page_size)
+        .ok_or_else(|| "Pagination offset is too large".to_string())?;
+
+    let search = search.unwrap_or_default().trim().to_string();
+
+    // --------------------------------------------------------
+    // COUNT MATCHING REGISTRATIONS
+    // --------------------------------------------------------
+
+    let total_count: i64 = conn
+        .query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM registrations r
+            JOIN customers c
+                ON r.customer_id = c.customer_id
+            WHERE
+                (?1 = ''
+                    OR c.name LIKE '%' || ?1 || '%' COLLATE NOCASE
+                    OR c.phone_number LIKE '%' || ?1 || '%' COLLATE NOCASE
+                    OR CAST(r.registration_id AS TEXT)
+                        LIKE '%' || ?1 || '%'
+                    OR COALESCE(r.relation, '')
+                        LIKE '%' || ?1 || '%' COLLATE NOCASE
+                    OR COALESCE(r.status, '')
+                        LIKE '%' || ?1 || '%' COLLATE NOCASE
+                )
+            "#,
+            rusqlite::params![search],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to count registrations: {}", e))?;
+
+    let total_pages = if total_count == 0 {
+        0
+    } else {
+        (total_count + page_size - 1) / page_size
+    };
+
+    // --------------------------------------------------------
+    // FETCH CURRENT PAGE
+    // --------------------------------------------------------
+
     let mut stmt = conn
         .prepare(
             r#"
-            SELECT 
+            SELECT
                 r.registration_id,
-                c.name as customer_name,
+                c.name AS customer_name,
                 c.phone_number,
                 r.relation,
                 r.status,
                 r.check_in,
                 r.check_out,
-                COUNT(rr.room_id) as room_count
+                COUNT(rr.room_id) AS room_count
             FROM registrations r
-            JOIN customers c ON r.customer_id = c.customer_id
-            LEFT JOIN registration_rooms rr ON r.registration_id = rr.registration_id
+            JOIN customers c
+                ON r.customer_id = c.customer_id
+            LEFT JOIN registration_rooms rr
+                ON r.registration_id = rr.registration_id
+            WHERE
+                (?1 = ''
+                    OR c.name LIKE '%' || ?1 || '%' COLLATE NOCASE
+                    OR c.phone_number LIKE '%' || ?1 || '%' COLLATE NOCASE
+                    OR CAST(r.registration_id AS TEXT)
+                        LIKE '%' || ?1 || '%'
+                    OR COALESCE(r.relation, '')
+                        LIKE '%' || ?1 || '%' COLLATE NOCASE
+                    OR COALESCE(r.status, '')
+                        LIKE '%' || ?1 || '%' COLLATE NOCASE
+                )
             GROUP BY r.registration_id
-            ORDER BY r.registration_id ASC
+            ORDER BY r.registration_id DESC
+            LIMIT ?2 OFFSET ?3
             "#,
         )
-        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+        .map_err(|e| format!("Failed to prepare history query: {}", e))?;
 
-    let history = stmt
-        .query_map([], |row| {
-            Ok(RegistrationHistory {
-                registration_id: row.get(0)?,
-                customer_name: row.get(1)?,
-                phone_number: row.get(2)?,
-                relation: row.get(3)?,
-                status: row.get(4)?,
-                check_in: row.get(5)?,
-                check_out: row.get(6)?,
-                room_count: row.get(7)?,
-            })
-        })
-        .map_err(|e| format!("Failed to retrieve history: {}", e))?
+    let rows = stmt
+        .query_map(
+            rusqlite::params![search, page_size, offset],
+            |row| {
+                Ok(RegistrationHistory {
+                    registration_id: row.get(0)?,
+                    customer_name: row.get(1)?,
+                    phone_number: row.get(2)?,
+                    relation: row.get(3)?,
+                    status: row.get(4)?,
+                    check_in: row.get(5)?,
+                    check_out: row.get(6)?,
+                    room_count: row.get(7)?,
+                })
+            },
+        )
+        .map_err(|e| format!("Failed to retrieve history: {}", e))?;
+
+    let registrations = rows
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Failed to read history: {}", e))?;
 
-    Ok(history)
-}
+    // --------------------------------------------------------
+    // RETURN PAGINATED RESULT
+    // --------------------------------------------------------
 
+    Ok(RegistrationHistoryPage {
+        registrations,
+        total_count,
+        page,
+        page_size,
+        total_pages,
+    })
+}
 // ============================================================
 // CHECKOUT ENTIRE REGISTRATION
 // ============================================================
