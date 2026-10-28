@@ -116,7 +116,10 @@ pub fn add_service_to_registration(
     app: AppHandle,
     request: AddServiceRequest,
     username: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<i64, String> {
+    crate::session::require_session(&state)?;
+
     if request.registration_id <= 0 {
         return Err("Invalid registration ID".to_string());
     }
@@ -284,7 +287,10 @@ pub fn add_custom_bill_item(
     app: AppHandle,
     request: AddCustomItemRequest,
     username: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<i64, String> {
+    crate::session::require_session(&state)?;
+
     if request.registration_id <= 0 {
         return Err("Invalid registration ID".to_string());
     }
@@ -370,7 +376,10 @@ pub fn return_service_quantity(
     app: AppHandle,
     request: ReturnServiceRequest,
     username: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     if request.bill_id <= 0 {
         return Err("Invalid bill ID".to_string());
     }
@@ -615,7 +624,10 @@ pub fn return_service_quantity(
 pub fn get_registration_bill(
     app: AppHandle,
     registration_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<RegistrationBill, String> {
+    crate::session::require_session(&state)?;
+
     if registration_id <= 0 {
         return Err("Invalid registration ID".to_string());
     }
@@ -718,7 +730,10 @@ pub fn delete_custom_bill_item(
     app: AppHandle,
     bill_id: i64,
     username: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     if bill_id <= 0 {
         return Err("Invalid bill ID".to_string());
     }
@@ -836,7 +851,10 @@ pub fn update_custom_bill_item_quantity(
     bill_id: i64,
     quantity: f64,
     username: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     if bill_id <= 0 {
         return Err("Invalid bill ID".to_string());
     }

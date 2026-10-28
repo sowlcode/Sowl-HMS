@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import {
     UserPlus,
@@ -13,8 +14,6 @@ import {
     Users,
     User,
     Bed,
-    IndianRupee,
-    RefreshCw,
     ArrowRightLeft,
     DoorOpen,
     Plus,
@@ -24,7 +23,6 @@ import {
     Globe,
     UserRound,
     Wrench,
-    Filter,
     CreditCard,
 } from "lucide-react";
 
@@ -308,6 +306,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
     // ============================================================
     // STATE
     // ============================================================
+    const navigate = useNavigate();
 
     const [customers, setCustomers] = useState([]);
     const [rooms, setRooms] = useState([]);
@@ -798,6 +797,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
                 registrationId: Number(changeRoomData.contextBooking.registration_id),
                 oldRoomId: Number(changeRoomData.contextRoom.room_id),
                 newRoomId: Number(selectedNewRoom.room_id),
+                username: session?.username || "system",
             });
 
             showSuccess(`Room changed from ${changeRoomData.contextRoom.room_number} to ${selectedNewRoom.room_number}.`);
@@ -921,7 +921,7 @@ export default function RoomRegistrationPage({ session, onNavigate }) {
     // ============================================================
 
     function navigateToCustomers() {
-        if (onNavigate) onNavigate("customers");
+        navigate("/customers");
     }
 
     // ============================================================

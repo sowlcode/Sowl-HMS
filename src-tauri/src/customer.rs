@@ -80,7 +80,10 @@ fn validate_document_fields(
 pub fn add_customer(
     app: AppHandle,
     customer: NewCustomer,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<i64, String> {
+    crate::session::require_session(&state)?;
+
     // Validate document fields
     validate_document_fields(
         &customer.document_type,
@@ -244,7 +247,10 @@ pub fn add_customer(
 pub fn update_customer(
     app: AppHandle,
     customer: UpdateCustomer,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     // Validate document fields
     validate_document_fields(&customer.document_type, &customer.document_number)?;
 
@@ -339,7 +345,10 @@ pub fn update_customer(
 pub fn delete_customer(
     app: AppHandle,
     customer_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     let db_path = database_path(&app)
         .map_err(|e| e.to_string())?;
 
@@ -371,7 +380,10 @@ pub fn delete_customer(
 pub fn get_customer(
     app: AppHandle,
     customer_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<Customer, String> {
+    crate::session::require_session(&state)?;
+
     let db_path = database_path(&app)
         .map_err(|e| e.to_string())?;
 
@@ -433,7 +445,10 @@ pub fn get_customer(
 pub fn list_customers(
     app: AppHandle,
     page: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<CustomerPage, String> {
+    crate::session::require_session(&state)?;
+
     let db_path = database_path(&app)
         .map_err(|e| e.to_string())?;
 
@@ -534,7 +549,10 @@ pub fn search_customers(
     app: AppHandle,
     search: String,
     page: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<CustomerPage, String> {
+    crate::session::require_session(&state)?;
+
     let db_path = database_path(&app)
         .map_err(|e| e.to_string())?;
 

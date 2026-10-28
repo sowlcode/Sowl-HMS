@@ -62,7 +62,11 @@ pub struct UpdateRoomRequest {
 // ============================================================
 
 #[tauri::command]
-pub fn add_room(app: AppHandle, room: AddRoomRequest) -> Result<i64, String> {
+pub fn add_room(app: AppHandle, room: AddRoomRequest,
+    state: tauri::State<'_, crate::session::SessionState>
+) -> Result<i64, String> {
+    crate::session::require_session(&state)?;
+
     // --------------------------------------------------------
     // Validate room number
     // --------------------------------------------------------
@@ -232,7 +236,11 @@ pub fn add_room(app: AppHandle, room: AddRoomRequest) -> Result<i64, String> {
 // ============================================================
 
 #[tauri::command]
-pub fn delete_room(app: AppHandle, room_id: i64) -> Result<(), String> {
+pub fn delete_room(app: AppHandle, room_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
+) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     // --------------------------------------------------------
     // Get database path
     // --------------------------------------------------------
@@ -297,7 +305,10 @@ pub fn delete_room(app: AppHandle, room_id: i64) -> Result<(), String> {
 pub fn update_room(
     app: AppHandle,
     room: UpdateRoomRequest,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     // --------------------------------------------------------
     // Validate room number
     // --------------------------------------------------------
@@ -436,7 +447,11 @@ pub fn update_room(
 // ============================================================
 
 #[tauri::command]
-pub fn get_rooms(app: AppHandle) -> Result<Vec<Room>, String> {
+pub fn get_rooms(app: AppHandle,
+    state: tauri::State<'_, crate::session::SessionState>
+) -> Result<Vec<Room>, String> {
+    crate::session::require_session(&state)?;
+
     // --------------------------------------------------------
     // Get database path
     // --------------------------------------------------------
@@ -510,7 +525,10 @@ pub fn get_rooms(app: AppHandle) -> Result<Vec<Room>, String> {
 #[tauri::command]
 pub fn get_available_rooms(
     app: AppHandle,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<Vec<Room>, String> {
+    crate::session::require_session(&state)?;
+
     // --------------------------------------------------------
     // Get database path
     // --------------------------------------------------------
@@ -591,7 +609,10 @@ pub fn get_available_rooms(
 pub fn set_room_maintenance(
     app: AppHandle,
     room_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     // --------------------------------------------------------
     // Get database path
     // --------------------------------------------------------
@@ -656,7 +677,10 @@ pub fn set_room_maintenance(
 pub fn remove_room_maintenance(
     app: AppHandle,
     room_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     // --------------------------------------------------------
     // Get database path
     // --------------------------------------------------------

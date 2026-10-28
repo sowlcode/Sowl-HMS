@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
     BrowserRouter,
     Routes,
@@ -16,12 +16,12 @@ import StaffPage from "./pages/StaffPage";
 import CustomerPage from "./pages/CustomerPage";
 import RoomRegistrationPage from "./pages/RoomRegistrationPage";
 import ManagerAccountPage from "./pages/ManagerAccountPage";
+import RegistrationHistoryPage from "./pages/RegistrationHistoryPage";
 import "./App.css";
 
 function App() {
     const [session, setSession] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activePage, setActivePage] = useState("dashboard");
 
     // Check session on app load
     useEffect(() => {
@@ -56,47 +56,16 @@ function App() {
         }
     }
 
-    async function handleLogout() {
+    const handleLogout = useCallback(async () => {
         try {
             console.log("Logging out...");
             await invoke("logout");
             setSession(null);
-            setActivePage("dashboard");
             console.log("Logout successful");
         } catch (error) {
             console.error("Logout failed:", error);
         }
-    }
-
-    // Function to render content based on active page
-
-    const renderContent = () => {
-        const handleNavigate = (page) => {
-            setActivePage(page);
-        };
-
-        switch (activePage) {
-            case "dashboard":
-                return <DashboardPage session={session} />;
-            case "rooms":
-                return <RoomPage session={session} />;
-            case "food-services":
-                return <FoodAndServicesPage session={session} />;
-            case "staff":
-                return <StaffPage session={session} />;
-            case "customers":
-                return <CustomerPage session={session} />;
-            case "room-registration":
-                return <RoomRegistrationPage
-                    session={session}
-                    onNavigate={handleNavigate}
-                />;
-            case "manager-account":
-                return <ManagerAccountPage session={session} />;
-            default:
-                return <DashboardPage session={session} />;
-        }
-    };
+    }, []);
 
     // Show loading spinner while checking session
     if (loading) {
@@ -112,8 +81,11 @@ function App() {
 
     // Determine admin status and user info from session
     const isAdmin = session?.role === "admin";
-    const username = session?.username || 'User';
-    const role = session?.role || 'staff';
+    const username = session?.username || "User";
+    const role = session?.role || "staff";
+
+    // Default landing page based on role
+    const defaultLanding = isAdmin ? "/dashboard" : "/room-registration";
 
     return (
         <BrowserRouter>
@@ -123,7 +95,7 @@ function App() {
                     path="/login"
                     element={
                         session ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to={defaultLanding} replace />
                         ) : (
                             <LoginPage setSession={setSession} />
                         )
@@ -133,21 +105,76 @@ function App() {
                 {/* Protected routes with Sidebar */}
                 <Route element={<ProtectedRoute session={session} />}>
                     <Route
-                        path="/dashboard/*"
                         element={
                             <Sidebar
-                                key={session?.user_id || 'no-session'}
-                                activePage={activePage}
-                                setActivePage={setActivePage}
+                                key={session?.user_id ?? "no-session"}
                                 isAdmin={isAdmin}
                                 username={username}
                                 role={role}
                                 onLogout={handleLogout}
-                            >
-                                {renderContent()}
-                            </Sidebar>
+                            />
                         }
-                    />
+                    >
+                        {/* Admin-only routes */}
+                        <Route
+                            path="/dashboard"
+                            element={
+                                isAdmin ? (
+                                    <DashboardPage session={session} />
+                                ) : (
+                                    <Navigate to="/room-registration" replace />
+                                )
+                            }
+                        />
+                        <Route
+                            path="/rooms"
+                            element={
+                                isAdmin ? (
+                                    <RoomPage session={session} />
+                                ) : (
+                                    <Navigate to="/room-registration" replace />
+                                )
+                            }
+                        />
+                        <Route
+                            path="/staff"
+                            element={
+                                isAdmin ? (
+                                    <StaffPage session={session} />
+                                ) : (
+                                    <Navigate to="/room-registration" replace />
+                                )
+                            }
+                        />
+                        <Route
+                            path="/manager-account"
+                            element={
+                                isAdmin ? (
+                                    <ManagerAccountPage session={session} />
+                                ) : (
+                                    <Navigate to="/room-registration" replace />
+                                )
+                            }
+                        />
+
+                        {/* Routes accessible to all authenticated users */}
+                        <Route
+                            path="/food-services"
+                            element={<FoodAndServicesPage session={session} />}
+                        />
+                        <Route
+                            path="/customers"
+                            element={<CustomerPage session={session} />}
+                        />
+                        <Route
+                            path="/room-registration"
+                            element={<RoomRegistrationPage session={session} />}
+                        />
+                        <Route
+                            path="/registration-history"
+                            element={<RegistrationHistoryPage session={session} />}
+                        />
+                    </Route>
                 </Route>
 
                 {/* Default route - redirect based on session */}
@@ -155,7 +182,7 @@ function App() {
                     path="*"
                     element={
                         session ? (
-                            <Navigate to="/dashboard" replace />
+                            <Navigate to={defaultLanding} replace />
                         ) : (
                             <Navigate to="/login" replace />
                         )

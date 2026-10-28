@@ -99,7 +99,10 @@ pub fn add_payment(
     app: AppHandle,
     request: AddPaymentRequest,
     payment_receiver: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<i64, String> {
+    crate::session::require_session(&state)?;
+
     // --------------------------------------------------------
     // VALIDATION
     // --------------------------------------------------------
@@ -201,7 +204,10 @@ pub fn add_payment(
 pub fn get_registration_payments(
     app: AppHandle,
     registration_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<RegistrationPayments, String> {
+    crate::session::require_session(&state)?;
+
     if registration_id <= 0 {
         return Err("Invalid registration ID".to_string());
     }
@@ -295,7 +301,10 @@ pub fn get_registration_payments(
 pub fn get_payment(
     app: AppHandle,
     payment_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<Payment, String> {
+    crate::session::require_session(&state)?;
+
     if payment_id <= 0 {
         return Err("Invalid payment ID".to_string());
     }

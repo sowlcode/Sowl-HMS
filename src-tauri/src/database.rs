@@ -55,7 +55,8 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
             document_number TEXT,
             document_pic TEXT,
             nationality TEXT,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME NOT NULL
+                DEFAULT (datetime('now', 'localtime')),
             is_deleted BOOLEAN NOT NULL DEFAULT 0
         );
         "#,
@@ -88,37 +89,37 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
     )?;
 
     // ============================================================
-    // Registrations table to store customer registrations
+    // REGISTRATIONS
     // ============================================================
 
     conn.execute(
         r#"
-    CREATE TABLE IF NOT EXISTS registrations (
-    registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS registrations (
+            registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    customer_id INTEGER NOT NULL,
+            customer_id INTEGER NOT NULL,
 
-    check_in DATETIME NOT NULL,
-    check_out DATETIME,
+            check_in DATETIME NOT NULL,
+            check_out DATETIME,
 
-    booking_datetime DATETIME NOT NULL
-        DEFAULT CURRENT_TIMESTAMP,
+            booking_datetime DATETIME NOT NULL
+                DEFAULT (datetime('now', 'localtime')),
 
-    relation TEXT NOT NULL,
+            relation TEXT NOT NULL,
 
-    status TEXT NOT NULL DEFAULT 'active'
-        CHECK (status IN (
-            'active',
-            'completed',
-            'cancelled'
-        )),
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN (
+                    'active',
+                    'completed',
+                    'cancelled'
+                )),
 
-    FOREIGN KEY (customer_id)
-        REFERENCES customers(customer_id)
-        ON DELETE RESTRICT
-        ON UPDATE CASCADE
-);
-    "#,
+            FOREIGN KEY (customer_id)
+                REFERENCES customers(customer_id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE
+        );
+        "#,
         [],
     )?;
 
@@ -128,17 +129,17 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
 
     conn.execute(
         r#"
-    CREATE TABLE IF NOT EXISTS food_services (
-        service_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        service_name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        service_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
-        stock INTEGER,
-        picture TEXT,
-        is_inventory BOOLEAN NOT NULL DEFAULT 0,
-        is_deleted BOOLEAN NOT NULL DEFAULT 0
-    );
-    "#,
+        CREATE TABLE IF NOT EXISTS food_services (
+            service_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            service_name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            service_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
+            stock INTEGER,
+            picture TEXT,
+            is_inventory BOOLEAN NOT NULL DEFAULT 0,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0
+        );
+        "#,
         [],
     )?;
 
@@ -148,45 +149,46 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
 
     conn.execute(
         r#"
-    CREATE TABLE IF NOT EXISTS registration_rooms (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS registration_rooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    registration_id INTEGER NOT NULL,
-    room_id INTEGER NOT NULL,
+            registration_id INTEGER NOT NULL,
+            room_id INTEGER NOT NULL,
 
-    male_count INTEGER NOT NULL DEFAULT 0,
-    female_count INTEGER NOT NULL DEFAULT 0,
+            male_count INTEGER NOT NULL DEFAULT 0,
+            female_count INTEGER NOT NULL DEFAULT 0,
 
-    check_in DATETIME NOT NULL,
-    check_out DATETIME,
+            check_in DATETIME NOT NULL,
+            check_out DATETIME,
 
-    status TEXT NOT NULL DEFAULT 'active'
-        CHECK (status IN (
-            'active',
-            'completed',
-            'cancelled'
-        )),
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN (
+                    'active',
+                    'completed',
+                    'cancelled'
+                )),
 
-    -- Tracks the most recent 12:00 PM boundary for which a nightly
-    -- room charge has already been billed. Used by the automatic
-    -- daily room-charge catch-up routine.
-    last_charged_date TEXT,
+            -- Tracks the most recent 12:00 PM boundary for which a nightly
+            -- room charge has already been billed. Used by the automatic
+            -- daily room-charge catch-up routine. Stored as a local date
+            -- string 'YYYY-MM-DD'.
+            last_charged_date TEXT,
 
-    -- Snapshot of the nightly rate at the moment the room was assigned.
-    -- Protects historical charges if rooms.room_rate changes later.
-    nightly_rate REAL,
+            -- Snapshot of the nightly rate at the moment the room was assigned.
+            -- Protects historical charges if rooms.room_rate changes later.
+            nightly_rate REAL,
 
-    FOREIGN KEY (registration_id)
-        REFERENCES registrations(registration_id)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
+            FOREIGN KEY (registration_id)
+                REFERENCES registrations(registration_id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE,
 
-    FOREIGN KEY (room_id)
-        REFERENCES rooms(room_id)
-        ON DELETE RESTRICT
-        ON UPDATE CASCADE
-);
-    "#,
+            FOREIGN KEY (room_id)
+                REFERENCES rooms(room_id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE
+        );
+        "#,
         [],
     )?;
 
@@ -196,41 +198,42 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
 
     conn.execute(
         r#"
-CREATE TABLE IF NOT EXISTS bill_items (
-    bill_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS bill_items (
+            bill_id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    registration_id INTEGER NOT NULL,
+            registration_id INTEGER NOT NULL,
 
-    service_id INTEGER,
-    item_name TEXT,
-    item_type TEXT NOT NULL
-        CHECK (item_type IN (
-            'room',
-            'service',
-            'custom'
-        )),
+            service_id INTEGER,
+            item_name TEXT,
+            item_type TEXT NOT NULL
+                CHECK (item_type IN (
+                    'room',
+                    'service',
+                    'custom'
+                )),
 
-    quantity DECIMAL(10,2) NOT NULL DEFAULT 1,
+            quantity DECIMAL(10,2) NOT NULL DEFAULT 1,
 
-    unit_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+            unit_price DECIMAL(10,2) NOT NULL DEFAULT 0,
 
-    total DECIMAL(10,2) NOT NULL DEFAULT 0,
+            total DECIMAL(10,2) NOT NULL DEFAULT 0,
 
-    added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            added_at DATETIME NOT NULL
+                DEFAULT (datetime('now', 'localtime')),
 
-    added_by TEXT NOT NULL DEFAULT 'system',
+            added_by TEXT NOT NULL DEFAULT 'system',
 
-    FOREIGN KEY (registration_id)
-        REFERENCES registrations(registration_id)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
+            FOREIGN KEY (registration_id)
+                REFERENCES registrations(registration_id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE,
 
-    FOREIGN KEY (service_id)
-        REFERENCES food_services(service_id)
-        ON DELETE RESTRICT
-        ON UPDATE CASCADE
-);
-"#,
+            FOREIGN KEY (service_id)
+                REFERENCES food_services(service_id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE
+        );
+        "#,
         [],
     )?;
 
@@ -240,34 +243,35 @@ CREATE TABLE IF NOT EXISTS bill_items (
 
     conn.execute(
         r#"
-    CREATE TABLE IF NOT EXISTS payments (
-        payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS payments (
+            payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-        registration_id INTEGER NOT NULL,
+            registration_id INTEGER NOT NULL,
 
-        booking_id INTEGER,
+            booking_id INTEGER,
 
-        payment_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            payment_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
 
-        payment_method TEXT NOT NULL
-            CHECK (payment_method IN (
-                'online',
-                'cash'
-            )),
+            payment_method TEXT NOT NULL
+                CHECK (payment_method IN (
+                    'online',
+                    'cash'
+                )),
 
-        payment_datetime DATETIME NOT NULL
-            DEFAULT CURRENT_TIMESTAMP,
+            payment_datetime DATETIME NOT NULL
+                DEFAULT (datetime('now', 'localtime')),
 
-        payment_receiver TEXT NOT NULL,
+            payment_receiver TEXT NOT NULL,
 
-        FOREIGN KEY (registration_id)
-            REFERENCES registrations(registration_id)
-            ON DELETE CASCADE
-            ON UPDATE CASCADE
-    );
-    "#,
+            FOREIGN KEY (registration_id)
+                REFERENCES registrations(registration_id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE
+        );
+        "#,
         [],
     )?;
+
     // ============================================================
     // SEED ADMIN
     // ============================================================

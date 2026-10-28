@@ -34,6 +34,7 @@ pub fn login(
             SELECT id, password_hash, role
             FROM users
             WHERE username = ?1
+              AND is_deleted = 0
             ",
             [&username],
             |row| {

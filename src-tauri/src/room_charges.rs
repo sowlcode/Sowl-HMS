@@ -358,7 +358,10 @@ pub fn catch_up_room_charges_from_app(
 pub fn sync_room_charges(
     app: AppHandle,
     registration_id: Option<i64>,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
 
     let db_path = database_path(&app)?;
 

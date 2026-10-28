@@ -52,7 +52,10 @@ pub fn create_user(
     app: AppHandle,
     username: String,
     password: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_admin(&state)?;
+
 
     let username = username.trim().to_string();
 
@@ -137,7 +140,10 @@ pub fn create_user(
 #[tauri::command]
 pub fn list_users(
     app: AppHandle,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<Vec<User>, String> {
+    crate::session::require_admin(&state)?;
+
 
     let conn = get_connection(&app)?;
 
@@ -178,7 +184,13 @@ pub fn change_user_password(
     app: AppHandle,
     user_id: i64,
     new_password: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    let session = crate::session::require_session(&state)?;
+    if session.user_id != user_id {
+        crate::session::require_admin(&state)?;
+    }
+
 
     println!(
         "Changing password for user ID: {}",
@@ -281,7 +293,10 @@ pub fn change_user_password(
 pub fn delete_user(
     app: AppHandle,
     user_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_admin(&state)?;
+
 
     println!(
         "Deleting user ID: {}",

@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::path::PathBuf;
-use tauri::{AppHandle};
+use tauri::AppHandle;
 
 use crate::database::database_path;
 use crate::room_charges::catch_up_room_charges;
@@ -146,7 +146,10 @@ pub fn create_booking(
     relation: String,
     room_ids: Vec<i64>,
     username: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<i64, String> {
+    crate::session::require_session(&state)?;
+
     if room_ids.is_empty() {
         return Err("At least one room must be selected.".to_string());
     }
@@ -380,7 +383,13 @@ pub fn create_booking(
                 ?5
             )
             "#,
-            params![registration_id, room_id, male_count, female_count, room_rate],
+            params![
+                registration_id,
+                room_id,
+                male_count,
+                female_count,
+                room_rate
+            ],
         )
         .map_err(|e| e.to_string())?;
 
@@ -424,7 +433,10 @@ pub fn add_room_to_registration(
     registration_id: i64,
     room_id: i64,
     username: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
@@ -519,12 +531,25 @@ pub fn add_room_to_registration(
                 ?5
             )
         "#,
-        params![registration_id, room_id, male_count, female_count, room_rate],
+        params![
+            registration_id,
+            room_id,
+            male_count,
+            female_count,
+            room_rate
+        ],
     )
     .map_err(|e| e.to_string())?;
 
     // Check-in day room charge for the new room
-    create_room_bill_item(&tx, registration_id, room_id, room_rate, &room_number, &username)?;
+    create_room_bill_item(
+        &tx,
+        registration_id,
+        room_id,
+        room_rate,
+        &room_number,
+        &username,
+    )?;
 
     // Occupy room
     tx.execute(
@@ -546,6 +571,14 @@ pub fn add_room_to_registration(
 // CHANGE ROOM
 // ============================================================
 
+// ============================================================
+// CHANGE ROOM
+// ============================================================
+
+// ============================================================
+// CHANGE ROOM
+// ============================================================
+
 #[tauri::command]
 pub fn change_registration_room(
     app: AppHandle,
@@ -553,7 +586,10 @@ pub fn change_registration_room(
     old_room_id: i64,
     new_room_id: i64,
     username: String,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     if old_room_id == new_room_id {
         return Err("Old room and new room cannot be the same.".to_string());
     }
@@ -562,7 +598,10 @@ pub fn change_registration_room(
 
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
-    // Check registration
+    // ============================================================
+    // VERIFY REGISTRATION IS ACTIVE
+    // ============================================================
+
     let registration_status: Option<String> = tx
         .query_row(
             "
@@ -586,10 +625,21 @@ pub fn change_registration_room(
         }
     }
 
-    // Bill any pending nightly charges BEFORE moving rooms
+    // ============================================================
+    // CATCH UP PENDING NIGHTLY CHARGES
+    // ============================================================
+    //
+    // Bill the old room up to the current 12:00 PM boundary
+    // BEFORE we close it. This ensures any nights the guest has
+    // already stayed in the old room are recorded as bill items.
+    // ============================================================
+
     catch_up_room_charges(&tx, Some(registration_id))?;
 
-    // Get male/female counts from an existing active room
+    // ============================================================
+    // GET GUEST COUNTS FROM AN EXISTING ACTIVE ROOM
+    // ============================================================
+
     let (male_count, female_count): (i64, i64) = tx
         .query_row(
             "
@@ -604,7 +654,10 @@ pub fn change_registration_room(
         )
         .map_err(|e| e.to_string())?;
 
-    // Check old room assignment
+    // ============================================================
+    // VERIFY OLD ROOM IS CURRENTLY ASSIGNED
+    // ============================================================
+
     let assignment_exists: bool = tx
         .query_row(
             "
@@ -626,7 +679,10 @@ pub fn change_registration_room(
         return Err("The old room is not currently assigned to this registration.".to_string());
     }
 
-    // Check new room and get rate/number
+    // ============================================================
+    // VERIFY NEW ROOM EXISTS AND IS AVAILABLE
+    // ============================================================
+
     let (new_room_status, new_room_rate, new_room_number): (String, f64, String) = tx
         .query_row(
             "
@@ -646,7 +702,10 @@ pub fn change_registration_room(
         ));
     }
 
-    // Get old room's number for targeted bill-item deletion
+    // ============================================================
+    // GET OLD ROOM'S NUMBER
+    // ============================================================
+
     let old_room_number: String = tx
         .query_row(
             "SELECT room_number FROM rooms WHERE room_id = ?1",
@@ -655,12 +714,15 @@ pub fn change_registration_room(
         )
         .map_err(|e| format!("Old room does not exist: {}", e))?;
 
-    // Close old room assignment
+    // ============================================================
+    // CLOSE OLD ROOM ASSIGNMENT (local time)
+    // ============================================================
+
     tx.execute(
         "
         UPDATE registration_rooms
         SET
-            check_out = CURRENT_TIMESTAMP,
+            check_out = datetime('now', 'localtime'),
             status = 'completed'
         WHERE registration_id = ?1
           AND room_id = ?2
@@ -671,7 +733,10 @@ pub fn change_registration_room(
     )
     .map_err(|e| e.to_string())?;
 
-    // Release old room
+    // ============================================================
+    // RELEASE OLD ROOM
+    // ============================================================
+
     tx.execute(
         "
         UPDATE rooms
@@ -682,7 +747,10 @@ pub fn change_registration_room(
     )
     .map_err(|e| e.to_string())?;
 
-    // Add new room with fresh last_charged_date
+    // ============================================================
+    // ASSIGN NEW ROOM (local time, fresh last_charged_date)
+    // ============================================================
+
     tx.execute(
         r#"
         INSERT INTO registration_rooms
@@ -703,38 +771,67 @@ pub fn change_registration_room(
                 ?2,
                 ?3,
                 ?4,
-                CURRENT_TIMESTAMP,
+                datetime('now', 'localtime'),
                 NULL,
                 'active',
                 date('now', 'localtime'),
                 ?5
             )
         "#,
-        params![registration_id, new_room_id, male_count, female_count, new_room_rate],
+        params![
+            registration_id,
+            new_room_id,
+            male_count,
+            female_count,
+            new_room_rate
+        ],
     )
     .map_err(|e| e.to_string())?;
 
-    // Delete the check-in bill item for the OLD room only.
+    // ============================================================
+    // REMOVE TODAY'S CHECK-IN BILL ITEM FOR THE OLD ROOM
+    // ============================================================
     //
-    // A check-in bill item has item_name = 'Room Charge (101)'
-    // A nightly bill item has item_name = 'Room Charge (101) - N night(s)'
+    // The guest is moving to a new room, so today's room charge
+    // for the old room should be swapped for the new room's
+    // charge. Nightly charges (if any) are preserved so the
+    // historical stay in the old room is still billed.
     //
-    // The ' - ' suffix distinguishes the two, so we target
-    // 'Room Charge (<old_room_number>)' exactly (no suffix).
-    let checkin_item_name = format!("Room Charge ({})", old_room_number);
+    // Item naming convention:
+    //   check-in : "Room Charge (101)"
+    //   nightly  : "Room Charge (101) - N night(s)"
+    // ============================================================
 
-    tx.execute(
-        r#"
-        DELETE FROM bill_items
-        WHERE registration_id = ?1
-          AND item_type = 'room'
-          AND item_name = ?2
-        "#,
-        params![registration_id, checkin_item_name],
-    )
-    .map_err(|e| format!("Failed to delete old check-in bill item: {}", e))?;
+    let old_checkin_item_name = format!("Room Charge ({})", old_room_number);
 
-    // Create new check-in bill item for the new room
+    let deleted = tx
+        .execute(
+            r#"
+            DELETE FROM bill_items
+            WHERE registration_id = ?1
+              AND item_type = 'room'
+              AND item_name = ?2
+            "#,
+            params![registration_id, old_checkin_item_name],
+        )
+        .map_err(|e| format!("Failed to delete old check-in bill item: {}", e))?;
+
+    if deleted > 0 {
+        println!(
+            "Room change: removed today's check-in charge for old room {}",
+            old_room_number
+        );
+    } else {
+        println!(
+            "Room change: no check-in charge found for old room {} (nothing to remove)",
+            old_room_number
+        );
+    }
+
+    // ============================================================
+    // CREATE CHECK-IN BILL ITEM FOR NEW ROOM
+    // ============================================================
+
     create_room_bill_item(
         &tx,
         registration_id,
@@ -744,7 +841,10 @@ pub fn change_registration_room(
         &username,
     )?;
 
-    // Occupy new room
+    // ============================================================
+    // OCCUPY NEW ROOM
+    // ============================================================
+
     tx.execute(
         "
         UPDATE rooms
@@ -765,7 +865,11 @@ pub fn change_registration_room(
 // ============================================================
 
 #[tauri::command]
-pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, String> {
+pub fn get_booking(app: AppHandle, registration_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
+) -> Result<Booking, String> {
+    crate::session::require_session(&state)?;
+
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let booking = conn
@@ -882,7 +986,11 @@ pub fn get_booking(app: AppHandle, registration_id: i64) -> Result<Booking, Stri
 // ============================================================
 
 #[tauri::command]
-pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
+pub fn get_active_bookings(app: AppHandle,
+    state: tauri::State<'_, crate::session::SessionState>
+) -> Result<Vec<Booking>, String> {
+    crate::session::require_session(&state)?;
+
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     // Catch up nightly charges for every active registration
@@ -1003,7 +1111,10 @@ pub fn get_active_bookings(app: AppHandle) -> Result<Vec<Booking>, String> {
 pub fn get_registration_rooms(
     app: AppHandle,
     registration_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<Vec<BookingRoom>, String> {
+    crate::session::require_session(&state)?;
+
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -1062,7 +1173,11 @@ pub fn get_registration_rooms(
 // ============================================================
 
 #[tauri::command]
-pub fn get_registration_history(app: AppHandle) -> Result<Vec<RegistrationHistory>, String> {
+pub fn get_registration_history(app: AppHandle,
+    state: tauri::State<'_, crate::session::SessionState>
+) -> Result<Vec<RegistrationHistory>, String> {
+    crate::session::require_session(&state)?;
+
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -1111,7 +1226,11 @@ pub fn get_registration_history(app: AppHandle) -> Result<Vec<RegistrationHistor
 // ============================================================
 
 #[tauri::command]
-pub fn checkout_registration(app: AppHandle, registration_id: i64) -> Result<(), String> {
+pub fn checkout_registration(app: AppHandle, registration_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
+) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
@@ -1221,7 +1340,11 @@ pub fn checkout_registration(app: AppHandle, registration_id: i64) -> Result<(),
 // ============================================================
 
 #[tauri::command]
-pub fn checkout_room(app: AppHandle, registration_id: i64, room_id: i64) -> Result<(), String> {
+pub fn checkout_room(app: AppHandle, registration_id: i64, room_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
+) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
     let conn = get_connection(&app).map_err(|e| e.to_string())?;
 
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;

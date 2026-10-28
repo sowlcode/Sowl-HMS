@@ -67,7 +67,10 @@ pub struct AddStockRequest {
 pub fn add_food_service(
     app: AppHandle,
     request: AddFoodServiceRequest,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<FoodService, String> {
+    crate::session::require_session(&state)?;
+
     if request.service_name.trim().is_empty() {
         return Err("Service name is required".to_string());
     }
@@ -160,7 +163,10 @@ pub fn add_food_service(
 pub fn add_food_service_stock(
     app: AppHandle,
     request: AddStockRequest,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<FoodService, String> {
+    crate::session::require_session(&state)?;
+
     if request.quantity <= 0 {
         return Err("Stock quantity must be greater than 0".to_string());
     }
@@ -236,7 +242,10 @@ pub fn add_food_service_stock(
 pub fn update_food_service(
     app: AppHandle,
     request: UpdateFoodServiceRequest,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<FoodService, String> {
+    crate::session::require_session(&state)?;
+
     if request.service_name.trim().is_empty() {
         return Err("Service name is required".to_string());
     }
@@ -334,7 +343,10 @@ pub fn update_food_service(
 pub fn delete_food_service(
     app: AppHandle,
     service_id: i64,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<String, String> {
+    crate::session::require_session(&state)?;
+
     let db_path = database_path(&app)
         .map_err(|e| e.to_string())?;
 
@@ -367,7 +379,10 @@ pub fn delete_food_service(
 #[tauri::command]
 pub fn get_food_services(
     app: AppHandle,
+    state: tauri::State<'_, crate::session::SessionState>
 ) -> Result<Vec<FoodService>, String> {
+    crate::session::require_session(&state)?;
+
     let db_path = database_path(&app)
         .map_err(|e| e.to_string())?;
 
