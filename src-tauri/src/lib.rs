@@ -152,6 +152,7 @@ pub fn run() {
             staff::change_staff_salary,
             staff::get_staff_salary_history,
             staff::get_current_staff_salary,
+            staff::update_staff_salary_history,
             // Attendance
             staff::add_staff_absence,
             staff::update_staff_absence,

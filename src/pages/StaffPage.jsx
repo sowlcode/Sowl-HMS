@@ -27,7 +27,6 @@ import {
   Trash2,
   TrendingUp,
   Upload,
-  UserCheck,
   UserPlus,
   Users,
   UserX,
@@ -264,25 +263,25 @@ function ConfirmationDialog({
   const theme =
     variant === "success"
       ? {
-          header: "bg-gradient-to-r from-green-600 to-emerald-600",
-          headerSub: "text-green-100",
-          button:
-            "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700",
-          note: "bg-green-50 text-green-700",
-          NoteIcon: Check,
-          noteText: "Please review the details above before confirming.",
-          sub: "Please confirm to proceed",
-        }
+        header: "bg-gradient-to-r from-green-600 to-emerald-600",
+        headerSub: "text-green-100",
+        button:
+          "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700",
+        note: "bg-green-50 text-green-700",
+        NoteIcon: Check,
+        noteText: "Please review the details above before confirming.",
+        sub: "Please confirm to proceed",
+      }
       : {
-          header: "bg-gradient-to-r from-red-600 to-red-700",
-          headerSub: "text-red-100",
-          button:
-            "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800",
-          note: "bg-red-50 text-red-600",
-          NoteIcon: AlertCircle,
-          noteText: "This action cannot be undone.",
-          sub: "This action cannot be undone",
-        };
+        header: "bg-gradient-to-r from-red-600 to-red-700",
+        headerSub: "text-red-100",
+        button:
+          "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800",
+        note: "bg-red-50 text-red-600",
+        NoteIcon: AlertCircle,
+        noteText: "This action cannot be undone.",
+        sub: "This action cannot be undone",
+      };
   const NoteIcon = theme.NoteIcon;
 
   return (
@@ -368,9 +367,8 @@ function Modal({
   return (
     <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
       <div
-        className={`flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-xl ${
-          size === "lg" ? "sm:max-w-2xl" : "sm:max-w-md"
-        }`}
+        className={`flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-xl ${size === "lg" ? "sm:max-w-2xl" : "sm:max-w-md"
+          }`}
         role="dialog"
         aria-modal="true"
       >
@@ -515,9 +513,8 @@ function DatePicker({
         type="button"
         onClick={() => (open ? setOpen(false) : openPicker())}
         disabled={disabled}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 ${
-          open ? "border-blue-500 ring-2 ring-blue-100" : "border-gray-300"
-        }`}
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 ${open ? "border-blue-500 ring-2 ring-blue-100" : "border-gray-300"
+          }`}
       >
         <span className={value ? "text-gray-800" : "text-gray-400"}>
           {value ? dateLabel(value) : placeholder}
@@ -527,100 +524,99 @@ function DatePicker({
 
       {open
         ? createPortal(
-            <div
-              ref={popRef}
-              style={{ top: pos.top, left: pos.left, width: POP_W }}
-              className="fixed z-[300] rounded-xl border border-gray-200 bg-white p-3 shadow-2xl"
-            >
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex">
-                  <button type="button" className={navBtn} onClick={() => shift(-12)} aria-label="Previous year">
-                    <ChevronsLeft className="h-4 w-4" />
-                  </button>
-                  <button type="button" className={navBtn} onClick={() => shift(-1)} aria-label="Previous month">
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                </div>
-                <span className="text-sm font-semibold text-gray-800">
-                  {monthLabel(view.year, view.month)}
-                </span>
-                <div className="flex">
-                  <button type="button" className={navBtn} onClick={() => shift(1)} aria-label="Next month">
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                  <button type="button" className={navBtn} onClick={() => shift(12)} aria-label="Next year">
-                    <ChevronsRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-7 text-center text-[11px] font-medium text-gray-400">
-                {WEEKDAYS.map((w) => (
-                  <div key={w} className="py-1">
-                    {w}
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-7 gap-0.5">
-                {cells.map((day, idx) => {
-                  if (day === null) return <div key={`e-${idx}`} className="h-9" />;
-                  const iso = toISO(view.year, view.month, day);
-                  const off = isDisabledDay(iso);
-                  const selected = iso === value;
-                  const isToday = iso === todayIso;
-
-                  return (
-                    <button
-                      key={iso}
-                      type="button"
-                      disabled={off}
-                      onClick={() => {
-                        onChange(iso);
-                        setOpen(false);
-                      }}
-                      className={`h-9 rounded-lg text-sm transition ${
-                        selected
-                          ? "bg-blue-600 font-semibold text-white shadow-sm"
-                          : off
-                          ? "cursor-not-allowed text-gray-300"
-                          : "text-gray-700 hover:bg-blue-50 hover:text-blue-700"
-                      } ${isToday && !selected ? "font-semibold text-blue-600 ring-1 ring-blue-300" : ""}`}
-                    >
-                      {day}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
-                <button
-                  type="button"
-                  disabled={isDisabledDay(todayIso)}
-                  onClick={() => {
-                    onChange(todayIso);
-                    setOpen(false);
-                  }}
-                  className="rounded-lg px-2 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
-                >
-                  Today
+          <div
+            ref={popRef}
+            style={{ top: pos.top, left: pos.left, width: POP_W }}
+            className="fixed z-[300] rounded-xl border border-gray-200 bg-white p-3 shadow-2xl"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex">
+                <button type="button" className={navBtn} onClick={() => shift(-12)} aria-label="Previous year">
+                  <ChevronsLeft className="h-4 w-4" />
                 </button>
-                {clearable && value ? (
+                <button type="button" className={navBtn} onClick={() => shift(-1)} aria-label="Previous month">
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </div>
+              <span className="text-sm font-semibold text-gray-800">
+                {monthLabel(view.year, view.month)}
+              </span>
+              <div className="flex">
+                <button type="button" className={navBtn} onClick={() => shift(1)} aria-label="Next month">
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <button type="button" className={navBtn} onClick={() => shift(12)} aria-label="Next year">
+                  <ChevronsRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-7 text-center text-[11px] font-medium text-gray-400">
+              {WEEKDAYS.map((w) => (
+                <div key={w} className="py-1">
+                  {w}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-0.5">
+              {cells.map((day, idx) => {
+                if (day === null) return <div key={`e-${idx}`} className="h-9" />;
+                const iso = toISO(view.year, view.month, day);
+                const off = isDisabledDay(iso);
+                const selected = iso === value;
+                const isToday = iso === todayIso;
+
+                return (
                   <button
+                    key={iso}
                     type="button"
+                    disabled={off}
                     onClick={() => {
-                      onChange("");
+                      onChange(iso);
                       setOpen(false);
                     }}
-                    className="rounded-lg px-2 py-1 text-xs font-semibold text-red-500 transition hover:bg-red-50"
+                    className={`h-9 rounded-lg text-sm transition ${selected
+                      ? "bg-blue-600 font-semibold text-white shadow-sm"
+                      : off
+                        ? "cursor-not-allowed text-gray-300"
+                        : "text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+                      } ${isToday && !selected ? "font-semibold text-blue-600 ring-1 ring-blue-300" : ""}`}
                   >
-                    Clear
+                    {day}
                   </button>
-                ) : null}
-              </div>
-            </div>,
-            document.body
-          )
+                );
+              })}
+            </div>
+
+            <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
+              <button
+                type="button"
+                disabled={isDisabledDay(todayIso)}
+                onClick={() => {
+                  onChange(todayIso);
+                  setOpen(false);
+                }}
+                className="rounded-lg px-2 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
+              >
+                Today
+              </button>
+              {clearable && value ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange("");
+                    setOpen(false);
+                  }}
+                  className="rounded-lg px-2 py-1 text-xs font-semibold text-red-500 transition hover:bg-red-50"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          </div>,
+          document.body
+        )
         : null}
     </>
   );
@@ -713,9 +709,8 @@ function DocumentUpload({ value, onChange, onRemove, onView, onError, disabled =
             type="button"
             onClick={onView}
             disabled={!onView}
-            className={`flex w-full items-center justify-center bg-gray-100 p-2 ${
-              onView ? "cursor-zoom-in" : "cursor-default"
-            }`}
+            className={`flex w-full items-center justify-center bg-gray-100 p-2 ${onView ? "cursor-zoom-in" : "cursor-default"
+              }`}
           >
             <img
               src={value}
@@ -752,11 +747,10 @@ function DocumentUpload({ value, onChange, onRemove, onView, onError, disabled =
           type="button"
           onClick={browse}
           disabled={disabled || reading}
-          className={`flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${
-            dragging
-              ? "border-blue-500 bg-blue-50"
-              : "border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/50"
-          }`}
+          className={`flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${dragging
+            ? "border-blue-500 bg-blue-50"
+            : "border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/50"
+            }`}
         >
           {reading ? (
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
@@ -767,8 +761,8 @@ function DocumentUpload({ value, onChange, onRemove, onView, onError, disabled =
             {reading
               ? "Reading image..."
               : dragging
-              ? "Drop the image to upload"
-              : "Drag & drop an image here, or click to browse"}
+                ? "Drop the image to upload"
+                : "Drag & drop an image here, or click to browse"}
           </p>
           <p className="mt-1 text-xs text-gray-400">PNG, JPG or WEBP — up to {MAX_DOC_MB} MB</p>
         </button>
@@ -793,7 +787,7 @@ function DocumentPreview({ value, onView }) {
       <button
         type="button"
         onClick={onView}
-        className="flex min-h-[220px] w-full items-center justify-center bg-gray-50 p-4 cursor-zoom-in"
+        className="flex min-h-[220px] w-full cursor-zoom-in items-center justify-center bg-gray-50 p-4"
       >
         <img
           src={value}
@@ -975,6 +969,10 @@ export default function StaffPage() {
   const [endDate, setEndDate] = useState(today());
   const [editingPayment, setEditingPayment] = useState(null);
   const [editingAbsence, setEditingAbsence] = useState(null);
+
+  // Edit existing salary-history record (hooks must live INSIDE the component)
+  const [editingSalary, setEditingSalary] = useState(null);
+  const [editSalaryForm, setEditSalaryForm] = useState({ monthlySalary: "", effectiveFrom: "" });
 
   const [monthCursor, setMonthCursor] = useState(() => {
     const d = new Date();
@@ -1253,6 +1251,59 @@ export default function StaffPage() {
   };
 
   // ----------------------------------------------------------
+  // EDIT EXISTING SALARY HISTORY RECORD
+  // ----------------------------------------------------------
+  const openEditSalary = (record) => {
+    setEditingSalary(record);
+    setEditSalaryForm({
+      monthlySalary: String(record.monthly_salary),
+      effectiveFrom: record.effective_from,
+    });
+    setFormError("");
+    setModal({ type: "editSalary" });
+  };
+
+  const closeEditSalary = () => {
+    setModal(null);
+    setEditingSalary(null);
+    setFormError("");
+  };
+
+  const submitEditSalary = async (event) => {
+    event.preventDefault();
+    if (!selectedStaff || !editingSalary) return;
+
+    const amount = Number(editSalaryForm.monthlySalary);
+    const effectiveFrom = editSalaryForm.effectiveFrom;
+
+    let err = "";
+    if (!editSalaryForm.monthlySalary || Number.isNaN(amount) || amount <= 0) {
+      err = "Monthly salary must be greater than 0";
+    } else if (!effectiveFrom) {
+      err = "Please select an effective date";
+    } else if (effectiveFrom < selectedStaff.start_date) {
+      err = "Effective date cannot be before employment start date";
+    } else if (selectedStaff.end_date && effectiveFrom > selectedStaff.end_date) {
+      err = "Effective date cannot be after employment ends";
+    }
+
+    setFormError(err);
+    if (err) return;
+
+    const ok = await runAction(
+      () =>
+        invoke("update_staff_salary_history", {
+          salaryId: editingSalary.salary_id,
+          monthlySalary: amount,
+          effectiveFrom,
+        }),
+      "Salary history updated and salary recalculated"
+    );
+
+    if (ok) setEditingSalary(null);
+  };
+
+  // ----------------------------------------------------------
   // ABSENCES (full day / half day)
   // ----------------------------------------------------------
   const openAddAbsence = (date) => {
@@ -1300,23 +1351,23 @@ export default function StaffPage() {
 
     const ok = editingAbsence
       ? await runAction(
-          () =>
-            invoke("update_staff_absence", {
-              absenceId: editingAbsence.absence_id,
-              absentDate: d,
-              absenceType: type,
-            }),
-          "Absence updated and salary recalculated"
-        )
+        () =>
+          invoke("update_staff_absence", {
+            absenceId: editingAbsence.absence_id,
+            absentDate: d,
+            absenceType: type,
+          }),
+        "Absence updated and salary recalculated"
+      )
       : await runAction(
-          () =>
-            invoke("add_staff_absence", {
-              staffId: selectedStaff.staff_id,
-              absentDate: d,
-              absenceType: type,
-            }),
-          `${typeText} recorded for ${dateLabel(d)}`
-        );
+        () =>
+          invoke("add_staff_absence", {
+            staffId: selectedStaff.staff_id,
+            absentDate: d,
+            absenceType: type,
+          }),
+        `${typeText} recorded for ${dateLabel(d)}`
+      );
 
     if (ok) setEditingAbsence(null);
   };
@@ -1382,13 +1433,13 @@ export default function StaffPage() {
 
     const ok = editingPayment
       ? await runAction(
-          () => invoke("update_staff_salary_payment", { paymentId: editingPayment.payment_id, ...payload }),
-          "Salary payment corrected"
-        )
+        () => invoke("update_staff_salary_payment", { paymentId: editingPayment.payment_id, ...payload }),
+        "Salary payment corrected"
+      )
       : await runAction(
-          () => invoke("add_staff_salary_payment", { staffId: selectedStaff.staff_id, ...payload }),
-          "Salary payment recorded"
-        );
+        () => invoke("add_staff_salary_payment", { staffId: selectedStaff.staff_id, ...payload }),
+        "Salary payment recorded"
+      );
 
     if (ok) {
       setEditingPayment(null);
@@ -1432,7 +1483,6 @@ export default function StaffPage() {
     });
   };
 
-  
   // ----------------------------------------------------------
   // CALENDAR
   // ----------------------------------------------------------
@@ -1463,9 +1513,8 @@ export default function StaffPage() {
   const tabBtn = (id, label, Icon, activeColor = "text-blue-600") => (
     <button
       onClick={() => setActiveTab(id)}
-      className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-all md:flex-initial md:px-4 ${
-        activeTab === id ? `bg-white ${activeColor} shadow-sm` : "text-gray-500 hover:text-gray-800"
-      }`}
+      className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-all md:flex-initial md:px-4 ${activeTab === id ? `bg-white ${activeColor} shadow-sm` : "text-gray-500 hover:text-gray-800"
+        }`}
     >
       <span className="flex items-center justify-center gap-2">
         <Icon className="h-4 w-4" />
@@ -1485,17 +1534,15 @@ export default function StaffPage() {
       icon: History,
       iconClass: "text-green-600",
       title: "Salary Payments",
-      desc: `${details?.payments?.length || 0} payment${
-        details?.payments?.length === 1 ? "" : "s"
-      } recorded — bonuses are stored separately`,
+      desc: `${details?.payments?.length || 0} payment${details?.payments?.length === 1 ? "" : "s"
+        } recorded — bonuses are stored separately`,
     },
     salary: {
       icon: TrendingUp,
       iconClass: "text-purple-600",
       title: "Salary History",
-      desc: `${salaryHistory.length} salary record${
-        salaryHistory.length === 1 ? "" : "s"
-      } — each day uses the salary in effect on that date`,
+      desc: `${salaryHistory.length} salary record${salaryHistory.length === 1 ? "" : "s"
+        } — each day uses the salary in effect on that date`,
     },
   }[activeTab];
 
@@ -1529,13 +1576,12 @@ export default function StaffPage() {
             {messages.map(({ id, text, type }) => (
               <div
                 key={id}
-                className={`flex items-start gap-3 rounded-lg border p-4 shadow-lg ${
-                  type === "success"
-                    ? "border-green-200 bg-green-50 text-green-700"
-                    : type === "error"
+                className={`flex items-start gap-3 rounded-lg border p-4 shadow-lg ${type === "success"
+                  ? "border-green-200 bg-green-50 text-green-700"
+                  : type === "error"
                     ? "border-red-200 bg-red-50 text-red-700"
                     : "border-blue-200 bg-blue-50 text-blue-700"
-                }`}
+                  }`}
               >
                 <div className="flex-1">
                   <p className="text-sm">{text}</p>
@@ -1677,15 +1723,13 @@ export default function StaffPage() {
                     <button
                       key={staff.staff_id}
                       onClick={() => setSelectedId(staff.staff_id)}
-                      className={`w-60 shrink-0 rounded-xl border p-3 text-left transition lg:w-full ${
-                        active ? "border-blue-200 bg-blue-50" : "border-gray-100 hover:bg-gray-50 lg:border-transparent"
-                      }`}
+                      className={`w-60 shrink-0 rounded-xl border p-3 text-left transition lg:w-full ${active ? "border-blue-200 bg-blue-50" : "border-gray-100 hover:bg-gray-50 lg:border-transparent"
+                        }`}
                     >
                       <div className="flex items-start gap-3">
                         <div
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                            active ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"
-                          }`}
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${active ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"
+                            }`}
                         >
                           {(staff.name || "?").trim().slice(0, 1).toUpperCase()}
                         </div>
@@ -1693,9 +1737,8 @@ export default function StaffPage() {
                           <div className="flex items-center justify-between gap-2">
                             <p className="truncate text-sm font-semibold text-gray-800">{staff.name}</p>
                             <span
-                              className={`h-2 w-2 shrink-0 rounded-full ${
-                                staff.end_date ? "bg-gray-400" : "bg-green-500"
-                              }`}
+                              className={`h-2 w-2 shrink-0 rounded-full ${staff.end_date ? "bg-gray-400" : "bg-green-500"
+                                }`}
                               title={staff.end_date ? "Former staff" : "Currently employed"}
                             />
                           </div>
@@ -1742,11 +1785,10 @@ export default function StaffPage() {
                             {selectedStaff.name}
                           </h2>
                           <span
-                            className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                              selectedStaff.end_date
-                                ? "border-gray-200 bg-gray-100 text-gray-600"
-                                : "border-green-200 bg-green-50 text-green-700"
-                            }`}
+                            className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${selectedStaff.end_date
+                              ? "border-gray-200 bg-gray-100 text-gray-600"
+                              : "border-green-200 bg-green-50 text-green-700"
+                              }`}
                           >
                             {selectedStaff.end_date ? "Former staff" : "Currently employed"}
                           </span>
@@ -1982,7 +2024,7 @@ export default function StaffPage() {
                     <div key="payments" className="page-fade p-4 sm:p-6">
                       {details.payments?.length ? (
                         <div className="thin-scroll overflow-x-auto rounded-xl border border-gray-200">
-                          <table className="w-full min-w-[460px]">
+                          <table className="w-full min-w-[380px]">
                             <thead>
                               <tr className="border-b border-gray-200 bg-gray-50">
                                 <th className="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:table-cell">#</th>
@@ -2086,7 +2128,12 @@ export default function StaffPage() {
                                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Monthly Salary</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">From</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">To</th>
-                                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                                  Status
+                                </th>
+                                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                                  Actions
+                                </th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -2104,8 +2151,8 @@ export default function StaffPage() {
                                       {h.effective_to
                                         ? dateLabel(addDaysISO(h.effective_to, -1))
                                         : selectedStaff.end_date
-                                        ? dateLabel(selectedStaff.end_date)
-                                        : "Present"}
+                                          ? dateLabel(selectedStaff.end_date)
+                                          : "Present"}
                                     </td>
                                     <td className="px-4 py-3 text-right">
                                       <span
@@ -2113,6 +2160,15 @@ export default function StaffPage() {
                                       >
                                         {status.label}
                                       </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <button
+                                        onClick={() => openEditSalary(h)}
+                                        className="rounded-lg p-1.5 text-gray-400 transition hover:bg-blue-50 hover:text-blue-600"
+                                        aria-label="Edit salary record"
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </button>
                                     </td>
                                   </tr>
                                 );
@@ -2318,9 +2374,8 @@ export default function StaffPage() {
                       type="button"
                       disabled={saving}
                       onClick={() => setAbsenceForm({ ...absenceForm, type: t.id })}
-                      className={`rounded-xl border p-3 text-left transition disabled:opacity-50 ${
-                        selected ? t.active : "border-gray-200 bg-white hover:bg-gray-50"
-                      }`}
+                      className={`rounded-xl border p-3 text-left transition disabled:opacity-50 ${selected ? t.active : "border-gray-200 bg-white hover:bg-gray-50"
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         <TypeIcon className={`h-4 w-4 ${selected ? t.iconActive : "text-gray-400"}`} />
@@ -2459,6 +2514,80 @@ export default function StaffPage() {
                   <>
                     <Check className="h-4 w-4" />
                     <span>Save Salary</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* EDIT EXISTING SALARY HISTORY MODAL
+          Rendered here (not inside the <table>) so the DOM nesting stays valid. */}
+      {modal?.type === "editSalary" && editingSalary && selectedStaff && (
+        <Modal
+          title="Edit Salary Record"
+          subtitle={`For ${selectedStaff.name}`}
+          icon={Pencil}
+          gradient="from-blue-600 to-indigo-600"
+          onClose={closeEditSalary}
+          busy={saving}
+        >
+          <form onSubmit={submitEditSalary} noValidate className="space-y-4 p-5 sm:p-6">
+            <div>
+              <label className={labelClass}>
+                Monthly Salary (NPR) <span className="text-red-500">*</span>
+              </label>
+              <input
+                className={`${inputClass} text-lg font-semibold`}
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={editSalaryForm.monthlySalary}
+                onChange={(e) =>
+                  setEditSalaryForm({ ...editSalaryForm, monthlySalary: e.target.value })
+                }
+                disabled={saving}
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                Effective From <span className="text-red-500">*</span>
+              </label>
+              <DatePicker
+                value={editSalaryForm.effectiveFrom}
+                onChange={(v) => setEditSalaryForm({ ...editSalaryForm, effectiveFrom: v })}
+                min={selectedStaff.start_date}
+                max={selectedStaff.end_date || today()}
+                disabled={saving}
+              />
+            </div>
+
+            <FormNote tone="amber">
+              Editing this record will rebuild the salary periods. Other salary records keep their own
+              amounts, but their effective dates may change. Total salary earned and the outstanding
+              balance will be recalculated.
+            </FormNote>
+
+            <FormError message={formError} />
+
+            <div className={footerClass}>
+              <button type="button" onClick={closeEditSalary} disabled={saving} className={cancelBtnClass}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className={`${submitBtnBase} bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700`}
+              >
+                {saving ? (
+                  <SavingContent />
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    <span>Save Changes</span>
                   </>
                 )}
               </button>

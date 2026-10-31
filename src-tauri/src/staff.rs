@@ -868,6 +868,152 @@ pub fn update_staff_salary_payment(
     Ok(())
 }
 
+
+// ============================================================
+// EDIT EXISTING STAFF SALARY HISTORY
+// Updates an existing salary record and rebuilds salary periods.
+// ============================================================
+
+#[tauri::command]
+pub fn update_staff_salary_history(
+    app: AppHandle,
+    salary_id: i64,
+    monthly_salary: f64,
+    effective_from: String,
+    state: tauri::State<'_, crate::session::SessionState>,
+) -> Result<(), String> {
+    crate::session::require_session(&state)?;
+
+    validate_id(salary_id, "salary")?;
+    validate_amount(monthly_salary, "Monthly salary", false)?;
+
+    let mut conn = get_connection(&app)?;
+
+    validate_date(&conn, &effective_from, "Effective date")?;
+
+    let effective_from = effective_from.trim();
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // Find the existing salary record and its staff member.
+    let record: Option<(i64, String)> = tx
+        .query_row(
+            r#"
+            SELECT staff_id, effective_from
+            FROM staff_salary_history
+            WHERE salary_id = ?1
+            "#,
+            params![salary_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let (staff_id, old_effective_from) =
+        record.ok_or("Salary history record does not exist")?;
+
+    // Get employment start date.
+    let start_date: String = tx
+        .query_row(
+            "SELECT start_date FROM staff WHERE staff_id = ?1",
+            params![staff_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or("Staff record does not exist")?;
+
+    if effective_from < start_date.as_str() {
+        return Err(
+            "Salary effective date cannot be before employment start date"
+                .to_string(),
+        );
+    }
+
+    // The first salary record must begin on the employment start date.
+    let earliest_date: String = tx
+        .query_row(
+            r#"
+            SELECT MIN(effective_from)
+            FROM staff_salary_history
+            WHERE staff_id = ?1
+            "#,
+            params![staff_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    if old_effective_from == earliest_date
+        && effective_from != start_date
+    {
+        return Err(
+            "The initial salary effective date must match the employment start date"
+                .to_string(),
+        );
+    }
+
+    // Do not allow duplicate effective dates.
+    let duplicate: bool = tx
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM staff_salary_history
+                WHERE staff_id = ?1
+                  AND salary_id != ?2
+                  AND effective_from = ?3
+            )
+            "#,
+            params![staff_id, salary_id, effective_from],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    if duplicate {
+        return Err(
+            "Another salary record already exists with this effective date"
+                .to_string(),
+        );
+    }
+
+    // Update the existing salary record.
+    tx.execute(
+        r#"
+        UPDATE staff_salary_history
+        SET monthly_salary = ?1,
+            effective_from = ?2
+        WHERE salary_id = ?3
+        "#,
+        params![monthly_salary, effective_from, salary_id],
+    )
+    .map_err(|e| format!("Failed to update salary history: {}", e))?;
+
+    // Rebuild effective_to for every salary record belonging
+    // to this staff member.
+    //
+    // Each salary remains applicable until the next salary
+    // becomes effective. The final record has effective_to = NULL.
+    tx.execute(
+        r#"
+        UPDATE staff_salary_history AS current
+        SET effective_to = (
+            SELECT MIN(next.effective_from)
+            FROM staff_salary_history AS next
+            WHERE next.staff_id = current.staff_id
+              AND next.effective_from > current.effective_from
+        )
+        WHERE current.staff_id = ?1
+        "#,
+        params![staff_id],
+    )
+    .map_err(|e| format!("Failed to rebuild salary periods: {}", e))?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+
 #[tauri::command]
 pub fn delete_staff_salary_payment(
     app: AppHandle,
