@@ -273,6 +273,120 @@ pub fn initialize_database(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
     )?;
 
     // ============================================================
+    // STAFF
+    // ============================================================
+
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS staff (
+    staff_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    name TEXT NOT NULL,
+    phone_number TEXT NOT NULL UNIQUE,
+    address TEXT,
+    position TEXT NOT NULL,
+
+    document_picture TEXT,
+
+    start_date TEXT NOT NULL,
+    end_date TEXT,
+
+    created_at DATETIME NOT NULL
+        DEFAULT (datetime('now', 'localtime')),
+
+    CHECK (
+        end_date IS NULL
+        OR end_date >= start_date
+    )
+);
+
+CREATE TABLE IF NOT EXISTS staff_salary_history (
+    salary_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    staff_id INTEGER NOT NULL,
+
+    monthly_salary REAL NOT NULL
+        CHECK (monthly_salary >= 0),
+
+    effective_from TEXT NOT NULL,
+    effective_to TEXT,
+
+    created_at DATETIME NOT NULL
+        DEFAULT (datetime('now', 'localtime')),
+
+    FOREIGN KEY (staff_id)
+        REFERENCES staff(staff_id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    UNIQUE (staff_id, effective_from),
+
+    CHECK (
+        effective_to IS NULL
+        OR effective_to > effective_from
+    )
+);
+
+        -- ========================================================
+        -- STAFF ABSENCES
+        -- ========================================================
+
+               CREATE TABLE IF NOT EXISTS staff_absences (
+            absence_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            staff_id INTEGER NOT NULL,
+
+            absent_date TEXT NOT NULL,
+
+            absence_type TEXT NOT NULL DEFAULT 'full_day'
+                CHECK (absence_type IN ('full_day', 'half_day')),
+
+            created_at DATETIME NOT NULL
+                DEFAULT (datetime('now', 'localtime')),
+
+            UNIQUE (staff_id, absent_date),
+
+            FOREIGN KEY (staff_id)
+                REFERENCES staff(staff_id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE
+        );
+
+        -- ========================================================
+        -- STAFF SALARY PAYMENTS
+        -- ========================================================
+
+        CREATE TABLE IF NOT EXISTS staff_salary_payments (
+            payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            staff_id INTEGER NOT NULL,
+
+            paid_amount DECIMAL(10,2) NOT NULL DEFAULT 0
+                CHECK (paid_amount >= 0),
+
+            bonus DECIMAL(10,2) NOT NULL DEFAULT 0
+                CHECK (bonus >= 0),
+
+            pay_date TEXT NOT NULL,
+
+            created_at DATETIME NOT NULL
+                DEFAULT (datetime('now', 'localtime')),
+
+            FOREIGN KEY (staff_id)
+                REFERENCES staff(staff_id)
+                ON DELETE RESTRICT
+                ON UPDATE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_staff_absences_staff_date
+            ON staff_absences(staff_id, absent_date);
+
+        CREATE INDEX IF NOT EXISTS idx_staff_payments_staff_date
+            ON staff_salary_payments(staff_id, pay_date);
+        ",
+    )?;
+
+    // ============================================================
     // SEED ADMIN
     // ============================================================
 

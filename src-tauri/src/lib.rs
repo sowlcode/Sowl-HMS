@@ -8,7 +8,7 @@ mod payments;
 mod room_charges;
 mod room_management;
 mod session;
-
+mod staff;
 pub fn run() {
     tauri::Builder::default()
         .manage(session::SessionState::new())
@@ -136,21 +136,33 @@ pub fn run() {
             // ROOM CHARGES
             // ----------------------------------------------------
             //
-            // Frontend can still manually trigger synchronization
-            // when required.
-            //
-            // invoke("sync_room_charges", {
-            //     registrationId: null
-            // })
-            //
-            // or:
-            //
-            // invoke("sync_room_charges", {
-            //     registrationId: 123
-            // })
-            //
             // ----------------------------------------------------
             room_charges::sync_room_charges,
+            // ----------------------------------------------------
+            // STAFF & SALARY MANAGEMENT
+            // ----------------------------------------------------
+
+            // Staff
+            staff::add_staff,
+            staff::update_staff,
+            staff::get_all_staff,
+            staff::get_staff,
+            staff::set_staff_end_date,
+            // Salary history
+            staff::change_staff_salary,
+            staff::get_staff_salary_history,
+            staff::get_current_staff_salary,
+            // Attendance
+            staff::add_staff_absence,
+            staff::update_staff_absence,
+            staff::delete_staff_absence,
+            // Salary payments
+            staff::add_staff_salary_payment,
+            staff::update_staff_salary_payment,
+            staff::delete_staff_salary_payment,
+            // Salary calculations
+            staff::get_staff_salary_summary,
+            staff::get_staff_details,
         ])
         // ========================================================
         // RUN TAURI APPLICATION
