@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "sowl_hms",
-  "version": "0.1.0",
-  "identifier": "com.spade.sowl-hms",
+  "productName": "SOWL HMS",
+  "version": "1.0.0",
+  "identifier": "com.sowl-hms",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -14,14 +14,15 @@
       {
         "label": "main",
         "title": "SOWL HMS",
-        "width": 1200,
-        "height": 800,
-        "transparent": false,
-        "center": true,
-        "resizable": true,
+        "width": 1440,
+        "height": 900,
+         "resizable": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
+        "maximized": true,
         "fullscreen": false,
-        "shadow": true,
-        "theme": "Dark"
+        "center": true
       }
     ],
     "security": {

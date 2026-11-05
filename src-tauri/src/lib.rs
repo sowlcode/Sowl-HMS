@@ -2,6 +2,7 @@ mod bill_items;
 mod booking;
 mod commands;
 mod customer;
+mod dashboard;
 mod database;
 mod food_services;
 mod payments;
@@ -9,6 +10,7 @@ mod room_charges;
 mod room_management;
 mod session;
 mod staff;
+
 pub fn run() {
     tauri::Builder::default()
         .manage(session::SessionState::new())
@@ -164,6 +166,10 @@ pub fn run() {
             // Salary calculations
             staff::get_staff_salary_summary,
             staff::get_staff_details,
+            // ----------------------------------------------------
+            // ADMIN DASHBOARD
+            // ----------------------------------------------------
+            dashboard::get_dashboard_data,
         ])
         // ========================================================
         // RUN TAURI APPLICATION
